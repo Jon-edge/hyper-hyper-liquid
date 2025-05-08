@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Hyperliquid Balance Checker",
-  description: "Check your Hyperliquid account balance",
+  title: "Hyper Hyperliquid",
+  description: "Professional Hyperliquid Trading Interface",
 }
 
 export default function RootLayout({
@@ -33,5 +33,5 @@ export default function RootLayout({
         </WalletProvider>
       </body>
     </html>
-  );
+  )
 }

@@ -23,16 +23,17 @@ export let websocketStatus: WebSocketStatus = 'disconnected'
 // Callback for status updates
 let statusChangeCallbacks: ((status: WebSocketStatus) => void)[] = []
 
-interface UserState {
+// Raw user state from the API
+export interface RawUserState {
   assetPositions: {
     coin: string
-    position: {
-      szi: string // Size in base currency
-      leverage: string
+    position?: {
+      coin: string
+      szi: string // Size
       entryPx: string // Entry price
-      positionValue: string // Position value in USD
-      unrealizedPnl: string // Unrealized profit and loss
-      returnOnEquity: string // ROE
+      positionValue: string // Position value
+      unrealizedPnl: string // Unrealized PnL
+      returnOnEquity: string // Return on equity
       liquidationPx: string // Liquidation price
       marginUsed: string // Margin used
     }
@@ -47,7 +48,8 @@ interface UserState {
   withdrawable: string // Withdrawable amount
 }
 
-export interface AccountBalance {
+// Processed user state for the UI
+export interface UserState {
   accountValue: string
   withdrawable: string
   leverage: string
@@ -62,13 +64,13 @@ export interface AccountBalance {
 }
 
 /**
- * Fetches the user's balance and position information from Hyperliquid API
+ * Fetches the user's state information including balance and positions from Hyperliquid API
  * @param address Ethereum address
- * @returns Account balance information
+ * @returns User state information including balance and positions
  */
-export const fetchAccountBalance = async (address: string): Promise<AccountBalance> => {
+export const fetchUserState = async (address: string): Promise<UserState> => {
   try {
-    console.log('Fetching account balance for address:', address)
+    console.log('Fetching data for address:', address)
     
     // Format the address to lowercase to ensure consistency
     const formattedAddress = address.toLowerCase()
@@ -132,7 +134,7 @@ export const fetchAccountBalance = async (address: string): Promise<AccountBalan
       leverage: '0',
       positions: [],
       error: error instanceof Error ? error.message : 'Unknown error'
-    } as AccountBalance & { error?: string }
+    } as UserState & { error?: string }
   }
 }
 
@@ -539,9 +541,9 @@ export const subscribeToChannel = async <T>(channel: string, params: any, callba
  * Subscribe to user state updates via WebSocket
  */
 // Cache for the last known good state for each user
-const userStateCache: Record<string, AccountBalance> = {}
+const userStateCache: Record<string, UserState> = {}
 
-export const subscribeToUserState = async (address: string, callback: (data: AccountBalance) => void): Promise<() => void> => {
+export const subscribeToUserState = async (address: string, onUpdate: (data: UserState) => void): Promise<() => void> => {
   // Ensure WebSocket is connected before subscribing
   if (!websocket || websocket.readyState !== WebSocket.OPEN) {
     console.log('WebSocket not connected, initializing...')
@@ -552,7 +554,7 @@ export const subscribeToUserState = async (address: string, callback: (data: Acc
   const formattedAddress = address.toLowerCase()
   console.log(`Subscribing to user state updates for address: ${formattedAddress}`)
   
-  // Process the user data and transform it into AccountBalance format
+  // Process the user data and transform it into UserState format
   const processUserData = (wsData: any) => {
     // Handle webData2 format (has clearinghouseState nested inside)
     let data = wsData
@@ -573,8 +575,8 @@ export const subscribeToUserState = async (address: string, callback: (data: Acc
       console.log('Found', positionCount, 'positions')
     }
     
-    // Transform data to AccountBalance format
-    const accountBalance: AccountBalance = {
+    // Transform data to UserState format
+    const userState: UserState = {
       accountValue: data.crossMarginSummary?.accountValue || '0',
       withdrawable: data.withdrawable || '0',
       leverage: data.crossMarginSummary?.totalNtlPos ? 
@@ -591,14 +593,14 @@ export const subscribeToUserState = async (address: string, callback: (data: Acc
     }
     
     console.log('Transformed account balance:', {
-      accountValue: accountBalance.accountValue,
-      withdrawable: accountBalance.withdrawable,
-      leverage: accountBalance.leverage,
-      positionCount: accountBalance.positions.length
+      accountValue: userState.accountValue,
+      withdrawable: userState.withdrawable,
+      leverage: userState.leverage,
+      positionCount: userState.positions.length
     })
     
     // Call the callback with the transformed data
-    callback(accountBalance)
+    onUpdate(userState)
   }
   
   // Create subscription for WebData2 which contains aggregate user information

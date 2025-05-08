@@ -3,7 +3,7 @@
 import Image from "next/image"
 import dynamic from "next/dynamic"
 import WalletConnect from "@/components/WalletConnect"
-import AccountBalance from "@/components/AccountBalance"
+import MainView from "@/components/MainView"
 
 // Use dynamic import for components that need browser APIs to avoid SSR issues
 const WebSocketStatusIndicator = dynamic(
@@ -49,7 +49,7 @@ export default function Home() {
           </div>
         </div>
 
-        <AccountBalance />
+        <MainView />
       </main>
 
       {/* Footer */}
