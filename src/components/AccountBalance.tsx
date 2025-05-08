@@ -2,7 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useWallet } from '@/context/WalletContext'
-import { fetchAccountBalance, AccountBalance as AccountBalanceType } from '@/services/hyperliquidService'
+import { 
+  fetchAccountBalance, 
+  subscribeToUserState,
+  AccountBalance as AccountBalanceType 
+} from '@/services/hyperliquidService'
 
 type SortDirection = 'asc' | 'desc' | null
 type SortColumn = 'coin' | 'size' | 'value' | 'entryPrice' | 'unrealizedPnl' | 'returnOnEquity' | null
@@ -53,13 +57,105 @@ export default function AccountBalance() {
   }
 
   useEffect(() => {
-    const getBalance = async () => {
-      if (!account) return
+    if (!account) return
 
-      setLoading(true)
-      setError(null)
-      
+    console.log('AccountBalance: Account changed, setting up data fetching')
+    setLoading(true)
+    setError(null)
+    
+    // Track WebSocket subscription for cleanup
+    let unsubscribe: (() => void) | null = null
+    
+    // Setup WebSocket for real-time updates
+    const setupWebSocket = async () => {
       try {
+        console.log('Setting up WebSocket subscription for account updates...')
+        unsubscribe = await subscribeToUserState(account, (wsData) => {
+          console.log('WebSocket update received!', wsData.positions.length, 'positions')
+          
+          // Log detailed information about the update
+          console.log('WebSocket update details:')
+          console.log('- Account Value:', wsData.accountValue)
+          console.log('- Withdrawable:', wsData.withdrawable)
+          console.log('- Leverage:', wsData.leverage)
+          console.log('- Position count:', wsData.positions.length)
+          
+          setBalance((prevBalance) => {
+            // If we have no positions in the update but have positions in the current state,
+            // keep the current positions and only update the account values
+            if (wsData.positions.length === 0 && prevBalance?.positions && prevBalance.positions.length > 0) {
+              console.log('WebSocket returned empty positions, preserving current positions')
+              return {
+                ...wsData,
+                positions: prevBalance.positions
+              }
+            }
+            
+            // If we have positions in the update, or if we have no current positions,
+            // check if anything has changed before updating
+            const positionsChanged = JSON.stringify(wsData.positions) !== JSON.stringify(prevBalance?.positions)
+            const valuesChanged = 
+              wsData.accountValue !== prevBalance?.accountValue ||
+              wsData.withdrawable !== prevBalance?.withdrawable ||
+              wsData.leverage !== prevBalance?.leverage
+            
+            // Log what changed
+            if (positionsChanged) {
+              console.log('Positions changed!')
+              // Find which position changed
+              if (prevBalance?.positions) {
+                wsData.positions.forEach((newPos, index) => {
+                  const oldPos = prevBalance.positions.find((p) => p.coin === newPos.coin)
+                  if (oldPos) {
+                    if (newPos.size !== oldPos.size) {
+                      console.log(`Position ${newPos.coin} size changed: ${oldPos.size} -> ${newPos.size}`)
+                    }
+                    if (newPos.value !== oldPos.value) {
+                      console.log(`Position ${newPos.coin} value changed: ${oldPos.value} -> ${newPos.value}`)
+                    }
+                    if (newPos.unrealizedPnl !== oldPos.unrealizedPnl) {
+                      console.log(`Position ${newPos.coin} PnL changed: ${oldPos.unrealizedPnl} -> ${newPos.unrealizedPnl}`)
+                    }
+                  } else {
+                    console.log(`New position added: ${newPos.coin}`)
+                  }
+                })
+              }
+            }
+            
+            if (valuesChanged) {
+              console.log('Account values changed!')
+              if (prevBalance) {
+                if (wsData.accountValue !== prevBalance.accountValue) {
+                  console.log(`Account value changed: ${prevBalance.accountValue} -> ${wsData.accountValue}`)
+                }
+                if (wsData.withdrawable !== prevBalance.withdrawable) {
+                  console.log(`Withdrawable changed: ${prevBalance.withdrawable} -> ${wsData.withdrawable}`)
+                }
+                if (wsData.leverage !== prevBalance.leverage) {
+                  console.log(`Leverage changed: ${prevBalance.leverage} -> ${wsData.leverage}`)
+                }
+              }
+            }
+              
+            if (positionsChanged || valuesChanged) {
+              console.log('Balance data changed, updating UI')
+              return wsData
+            } else {
+              console.log('No changes in balance data')
+              return prevBalance
+            }
+          })
+        })
+      } catch (err) {
+        console.error('Error setting up WebSocket subscription:', err)
+      }
+    }
+    
+    // Initial fetch using REST API
+    const fetchInitialData = async () => {
+      try {
+        console.log('Fetching initial account data...')
         const data = await fetchAccountBalance(account)
         
         // Check if there was an error returned from the service
@@ -67,7 +163,11 @@ export default function AccountBalance() {
           setError(`Failed to fetch account balance: ${data.error}`)
           console.error('Error in account data:', data.error)
         } else {
+          console.log(`Initial data loaded: ${data.positions.length} positions`)
           setBalance(data)
+          
+          // Now that we have initial data, set up the WebSocket connection
+          setupWebSocket()
         }
       } catch (err) {
         setError('Failed to fetch account balance. Please try again.')
@@ -77,38 +177,36 @@ export default function AccountBalance() {
       }
     }
 
-    getBalance()
+    // Start with initial data load
+    fetchInitialData()
+    
+    // Cleanup function
+    return () => {
+      if (unsubscribe) {
+        console.log('Cleaning up WebSocket subscription')
+        unsubscribe()
+      }
+    }
   }, [account])
-
-  if (!account) {
-    return (
-      <div className="p-6 bg-gray-50 rounded-lg shadow-sm border border-gray-200">
-        <p className="text-gray-500">Connect your wallet to view your account balance</p>
-      </div>
-    )
-  }
-
-  if (loading) {
-    return (
-      <div className="p-6 bg-gray-50 rounded-lg shadow-sm border border-gray-200">
-        <p className="text-gray-500">Loading account data...</p>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="p-6 bg-red-50 rounded-lg shadow-sm border border-red-200">
-        <p className="text-red-500">{error}</p>
-      </div>
-    )
-  }
 
   return (
     <div className="p-6 bg-white rounded-lg shadow-md border border-gray-200">
       <h2 className="text-2xl font-bold mb-4">Account Balance</h2>
       
-      {balance ? (
+      {loading && (
+        <div className="flex justify-center items-center py-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          <span className="ml-2">Loading account data...</span>
+        </div>
+      )}
+      
+      {error && (
+        <div className="p-4 bg-red-50 text-red-700 rounded-lg mb-4">
+          {error}
+        </div>
+      )}
+      
+      {balance && !loading && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-4 bg-blue-50 rounded-lg">
@@ -119,13 +217,13 @@ export default function AccountBalance() {
               <p className="text-sm text-gray-500">Withdrawable</p>
               <p className="text-xl font-semibold">${parseFloat(balance.withdrawable).toFixed(2)}</p>
             </div>
-            <div className="p-4 bg-purple-50 rounded-lg">
+            <div className="p-4 bg-yellow-50 rounded-lg">
               <p className="text-sm text-gray-500">Leverage</p>
               <p className="text-xl font-semibold">{parseFloat(balance.leverage).toFixed(2)}x</p>
             </div>
           </div>
-
-          {balance.positions.length > 0 ? (
+          
+          {getSortedPositions().length > 0 ? (
             <div className="mt-6">
               <h3 className="text-lg font-semibold mb-3">Positions</h3>
               <div className="overflow-x-auto">
@@ -133,16 +231,18 @@ export default function AccountBalance() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        scope="col" 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
                         onClick={() => handleSort('coin')}
                       >
-                        Asset
+                        Coin
                         {sortColumn === 'coin' && (
                           <span className="ml-1">{sortDirection === 'asc' ? '↑' : '↓'}</span>
                         )}
                       </th>
                       <th 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        scope="col" 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
                         onClick={() => handleSort('size')}
                       >
                         Size
@@ -151,7 +251,8 @@ export default function AccountBalance() {
                         )}
                       </th>
                       <th 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        scope="col" 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
                         onClick={() => handleSort('value')}
                       >
                         Value
@@ -160,7 +261,8 @@ export default function AccountBalance() {
                         )}
                       </th>
                       <th 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        scope="col" 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
                         onClick={() => handleSort('entryPrice')}
                       >
                         Entry Price
@@ -169,16 +271,18 @@ export default function AccountBalance() {
                         )}
                       </th>
                       <th 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        scope="col" 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
                         onClick={() => handleSort('unrealizedPnl')}
                       >
-                        PnL
+                        Unrealized PnL
                         {sortColumn === 'unrealizedPnl' && (
                           <span className="ml-1">{sortDirection === 'asc' ? '↑' : '↓'}</span>
                         )}
                       </th>
                       <th 
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        scope="col" 
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
                         onClick={() => handleSort('returnOnEquity')}
                       >
                         ROE
@@ -190,15 +294,23 @@ export default function AccountBalance() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {getSortedPositions().map((position, index) => (
-                      <tr key={index}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{position.coin}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{parseFloat(position.size).toFixed(4)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${parseFloat(position.value).toFixed(2)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${parseFloat(position.entryPrice).toFixed(2)}</td>
-                        <td className={`px-6 py-4 whitespace-nowrap text-sm ${parseFloat(position.unrealizedPnl) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                      <tr key={position.coin} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {position.coin}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {parseFloat(position.size).toFixed(4)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          ${parseFloat(position.value).toFixed(2)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          ${parseFloat(position.entryPrice).toFixed(2)}
+                        </td>
+                        <td className={`px-6 py-4 whitespace-nowrap text-sm ${parseFloat(position.unrealizedPnl) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           ${parseFloat(position.unrealizedPnl).toFixed(2)}
                         </td>
-                        <td className={`px-6 py-4 whitespace-nowrap text-sm ${parseFloat(position.returnOnEquity) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        <td className={`px-6 py-4 whitespace-nowrap text-sm ${parseFloat(position.returnOnEquity) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {parseFloat(position.returnOnEquity).toFixed(2)}%
                         </td>
                       </tr>
@@ -213,8 +325,12 @@ export default function AccountBalance() {
             </div>
           )}
         </div>
-      ) : (
-        <p className="text-gray-500">No account data available</p>
+      )}
+      
+      {!account && (
+        <div className="p-4 bg-yellow-50 rounded-lg">
+          <p className="text-gray-700">Please connect your wallet to view your account balance.</p>
+        </div>
       )}
     </div>
   )

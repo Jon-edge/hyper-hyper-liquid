@@ -1,8 +1,15 @@
 "use client"
 
 import Image from "next/image"
+import dynamic from "next/dynamic"
 import WalletConnect from "@/components/WalletConnect"
 import AccountBalance from "@/components/AccountBalance"
+
+// Use dynamic import for components that need browser APIs to avoid SSR issues
+const WebSocketStatusIndicator = dynamic(
+  () => import("@/components/WebSocketStatusIndicator"),
+  { ssr: false }
+)
 
 export default function Home() {
   return (
@@ -20,6 +27,9 @@ export default function Home() {
               priority
             />
             <h1 className="text-xl font-bold text-gray-900">Hyper Hyperliquid</h1>
+            <div className="ml-4 pl-4 border-l border-gray-200">
+              <WebSocketStatusIndicator />
+            </div>
           </div>
           <WalletConnect />
         </div>
