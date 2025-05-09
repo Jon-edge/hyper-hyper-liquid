@@ -28,6 +28,8 @@ export const baseStyles = {
       red: 'bg-red-50',
       redBase: 'bg-red-500',
       redHover: 'hover:bg-red-600',
+      purple: 'bg-purple-50',
+      orange: 'bg-orange-50',
     },
     focus: {
       blue: 'focus:ring-2 focus:ring-blue-300',
@@ -150,6 +152,8 @@ export const compositeStyles = {
       yellow: baseStyles.colors.bg.yellow,
       red: baseStyles.colors.bg.red,
       gray: baseStyles.colors.bg.gray,
+      purple: baseStyles.colors.bg.purple,
+      orange: baseStyles.colors.bg.orange,
     },
   },
   

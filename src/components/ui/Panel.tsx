@@ -1,9 +1,9 @@
 "use client"
 
 import { ReactNode } from 'react'
-import { theme, cx } from '@/styles/theme'
+import { theme, baseStyles, cx } from '@/styles/theme'
 
-export type PanelVariant = 'blue' | 'green' | 'yellow' | 'red' | 'gray'
+export type PanelVariant = 'blue' | 'green' | 'yellow' | 'red' | 'gray' | 'purple' | 'orange'
 
 export interface PanelProps {
   children: ReactNode
@@ -57,13 +57,17 @@ Panel.Value = function PanelValue({
   negative?: boolean
   className?: string 
 }) {
-  const valueStyle = 
-    positive ? theme.text.values.positive :
-    negative ? theme.text.values.negative :
-    theme.text.values.default
+  // Always use the default value style for consistent font styling
+  const baseStyle = theme.text.values.default;
+  
+  // Only apply color styles when needed
+  const colorStyle = 
+    positive ? baseStyles.colors.text.positive :
+    negative ? baseStyles.colors.text.negative :
+    '';
 
   return (
-    <p className={cx(valueStyle, className)}>
+    <p className={cx(baseStyle, colorStyle, className)}>
       {children}
     </p>
   )
