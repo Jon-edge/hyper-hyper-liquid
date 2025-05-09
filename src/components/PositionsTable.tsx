@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { AssetPosition, FetchedClearinghouseState } from '../types/hyperliquidTypes'
+import { theme, cx } from '../styles/theme'
 
 type SortDirection = 'asc' | 'desc' | null
 type SortColumn = 'coin' | 'size' | 'value' | 'entryPrice' | 'unrealizedPnl' | 'returnOnEquity' | null
@@ -66,22 +67,22 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
 
   if (positions.length === 0) {
     return (
-      <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-        <p className="text-gray-500">No positions found</p>
+      <div className={cx("mt-6", theme.containers.panel, theme.containers.panelVariants.gray)}>
+        <p className={theme.text.body.muted}>No positions found</p>
       </div>
     )
   }
 
   return (
     <div className="mt-6">
-      <h3 className="text-lg font-semibold mb-3">Positions</h3>
+      <h3 className={theme.text.heading.section}>Positions</h3>
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+        <table className={theme.table.container}>
+          <thead className={theme.table.header.row}>
             <tr>
               <th 
                 scope="col" 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                className={cx(theme.table.header.cell, 'cursor-pointer')}
                 onClick={() => handleSort('coin')}
               >
                 Coin
@@ -91,7 +92,7 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
               </th>
               <th 
                 scope="col" 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                className={cx(theme.table.header.cell, 'cursor-pointer')}
                 onClick={() => handleSort('size')}
               >
                 Size
@@ -101,7 +102,7 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
               </th>
               <th 
                 scope="col" 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                className={cx(theme.table.header.cell, 'cursor-pointer')}
                 onClick={() => handleSort('value')}
               >
                 Value
@@ -111,7 +112,7 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
               </th>
               <th 
                 scope="col" 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                className={cx(theme.table.header.cell, 'cursor-pointer')}
                 onClick={() => handleSort('entryPrice')}
               >
                 Entry Price
@@ -121,7 +122,7 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
               </th>
               <th 
                 scope="col" 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                className={cx(theme.table.header.cell, 'cursor-pointer')}
                 onClick={() => handleSort('unrealizedPnl')}
               >
                 Unrealized PnL
@@ -131,7 +132,7 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
               </th>
               <th 
                 scope="col" 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                className={cx(theme.table.header.cell, 'cursor-pointer')}
                 onClick={() => handleSort('returnOnEquity')}
               >
                 ROE
@@ -141,25 +142,25 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="divide-y divide-gray-200">
             {getSortedPositions().map((position: AssetPosition, index: number) => (
-              <tr key={position.position.coin} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+              <tr key={position.position.coin} className={index % 2 === 0 ? theme.table.body.row.even : theme.table.body.row.odd}>
+                <td className={theme.table.body.cell.default}>
                   {position.position.coin}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className={theme.table.body.cell.secondary}>
                   {parseFloat(position.position.szi).toFixed(4)}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className={theme.table.body.cell.secondary}>
                   ${parseFloat(position.position.positionValue).toFixed(2)}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className={theme.table.body.cell.secondary}>
                   ${parseFloat(position.position.entryPx).toFixed(2)}
                 </td>
-                <td className={`px-6 py-4 whitespace-nowrap text-sm ${parseFloat(position.position.unrealizedPnl) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <td className={cx(theme.table.body.cell.secondary, parseFloat(position.position.unrealizedPnl) >= 0 ? theme.text.values.positive : theme.text.values.negative)}>
                   ${parseFloat(position.position.unrealizedPnl).toFixed(2)}
                 </td>
-                <td className={`px-6 py-4 whitespace-nowrap text-sm ${parseFloat(position.position.returnOnEquity) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <td className={cx(theme.table.body.cell.secondary, parseFloat(position.position.returnOnEquity) >= 0 ? theme.text.values.positive : theme.text.values.negative)}>
                   {parseFloat(position.position.returnOnEquity).toFixed(2)}%
                 </td>
               </tr>

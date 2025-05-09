@@ -3,10 +3,11 @@
 import { useState } from 'react'
 import { useWallet } from '@/context/WalletContext'
 import { subscribeToUserState } from '@/services/hyperliquidService'
-import AccountSummary from './AccountSummary'
-import PositionsTable from './PositionsTable'
+import AccountSummary from '@/components/AccountSummary'
+import PositionsTable from '@/components/PositionsTable'
 import { useAsyncEffect } from '@/hooks/useAsyncEffect'
 import type { AccountState, AssetPosition } from '../types/hyperliquidTypes'
+import { theme, cx } from '@/styles/theme'
 
 export default function MainView() {
   const { account } = useWallet()
@@ -124,18 +125,18 @@ export default function MainView() {
   }, [account], 'hyperliquid-user-state')
 
   return (
-    <div className="p-6 bg-white rounded-lg shadow-md border border-gray-200">
-      <h2 className="text-2xl font-bold mb-4">Account Overview</h2>
+    <div className={theme.containers.card}>
+      <h2 className={theme.text.heading.main}>Account Overview</h2>
       
       {isLoading && (
         <div className="flex justify-center items-center py-4">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          <div className={theme.components.loader}></div>
           <span className="ml-2">Loading account data...</span>
         </div>
       )}
       
       {error != null && (
-        <div className="p-4 bg-red-50 text-red-700 rounded-lg mb-4">
+        <div className={cx(theme.containers.panel, theme.containers.panelVariants.red, 'mb-4 text-red-700')}>
           {error}
         </div>
       )}
