@@ -1,9 +1,12 @@
 "use client"
 
-import React, { ReactNode, useState } from 'react'
+import React, { ReactNode, useState, useCallback } from 'react'
 import { AssetPosition, FetchedClearinghouseState } from '../types/hyperliquidTypes'
 import { Table, Panel } from '@/components/ui'
 import { formatNumber, formatFiat, formatPercent } from '@/utils/formatters'
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, horizontalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 type SortDirection = 'asc' | 'desc' | null
 
@@ -20,9 +23,51 @@ interface PositionsTableProps {
   midPrices?: Record<string, string>
 }
 
+// Sortable column header component
+function SortableColumnHeader({ id, label, sortActive, sortDirection, onClick, className }: {
+  id: string
+  label: string
+  sortActive?: boolean
+  sortDirection?: 'asc' | 'desc' | null
+  onClick?: () => void
+  className?: string
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+  
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    cursor: 'grab',
+    opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none',
+  }
+  
+  return (
+    <Table.HeaderCell
+      ref={setNodeRef}
+      style={style}
+      className={className}
+      {...attributes}
+      {...listeners}
+      sortActive={sortActive}
+      sortDirection={sortDirection}
+      onClick={onClick}
+    >
+      {label}
+    </Table.HeaderCell>
+  )
+}
+
 export default function PositionsTable({ positions, midPrices = {} }: PositionsTableProps) {
   // Define column configuration as a single source of truth
-  const columns: ColumnConfig[] = [
+  const initialColumns: ColumnConfig[] = [
     {
       id: 'coin',
       label: 'COIN',
@@ -151,8 +196,21 @@ export default function PositionsTable({ positions, midPrices = {} }: PositionsT
     }
   ];
   
+  const [columns, setColumns] = useState<ColumnConfig[]>(initialColumns)
   const [sortColumnId, setSortColumnId] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>(null)
+  
+  // Set up DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Minimum drag distance before activation
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   // Handle sorting when a column header is clicked
   const handleSort = (columnId: string) => {
@@ -168,6 +226,20 @@ export default function PositionsTable({ positions, midPrices = {} }: PositionsT
       setSortDirection('asc')
     }
   }
+  
+  // Handle drag end event for column reordering
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event
+    
+    if (over && active.id !== over.id) {
+      setColumns((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id)
+        const newIndex = items.findIndex((item) => item.id === over.id)
+        
+        return arrayMove(items, oldIndex, newIndex)
+      })
+    }
+  }, [])
 
   // Sort the positions based on current sort settings
   const getSortedPositions = () => {
@@ -211,20 +283,30 @@ export default function PositionsTable({ positions, midPrices = {} }: PositionsT
     <div className="mt-6">
       <h3 className="text-lg font-semibold mb-3 text-gray-900">Positions</h3>
       <Table>
-        <Table.Header>
-          <tr>
-            {columns.map(column => (
-              <Table.HeaderCell 
-                key={column.id}
-                onClick={() => handleSort(column.id)}
-                sortActive={sortColumnId === column.id}
-                sortDirection={sortColumnId === column.id ? sortDirection : null}
-              >
-                {column.label}
-              </Table.HeaderCell>
-            ))}
-          </tr>
-        </Table.Header>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <Table.Header>
+            <tr>
+              <SortableContext items={columns.map(col => col.id)} strategy={horizontalListSortingStrategy}>
+                {columns.map((column, index) => (
+                  <React.Fragment key={column.id}>
+                    <SortableColumnHeader
+                      id={column.id}
+                      label={column.label}
+                      onClick={() => handleSort(column.id)}
+                      sortActive={sortColumnId === column.id}
+                      sortDirection={sortColumnId === column.id ? sortDirection : null}
+                      className={index < columns.length - 1 ? 'border-r border-gray-300' : ''}
+                    />
+                  </React.Fragment>
+                ))}
+              </SortableContext>
+            </tr>
+          </Table.Header>
+        </DndContext>
         <Table.Body>
           {getSortedPositions().map((position: AssetPosition, index: number) => (
             <Table.Row key={position.position.coin} isEven={index % 2 === 0}>

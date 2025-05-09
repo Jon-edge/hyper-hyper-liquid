@@ -1,6 +1,6 @@
 "use client"
 
-import { ReactNode } from 'react'
+import { ReactNode, forwardRef, CSSProperties } from 'react'
 import { theme, cx } from '@/styles/theme'
 
 export interface TableProps {
@@ -41,24 +41,30 @@ Table.Header = function TableHeader({
 /**
  * Table.HeaderCell component for sortable header cells
  */
-Table.HeaderCell = function TableHeaderCell({
-  children,
-  onClick,
-  sortActive,
-  sortDirection,
-  className
-}: {
+Table.HeaderCell = forwardRef<HTMLTableCellElement, {
   children: ReactNode
   onClick?: () => void
   sortActive?: boolean
   sortDirection?: 'asc' | 'desc' | null
   className?: string
-}) {
+  style?: CSSProperties
+}>(function TableHeaderCell({
+  children,
+  onClick,
+  sortActive,
+  sortDirection,
+  className,
+  style,
+  ...props
+}, ref) {
   return (
     <th
+      ref={ref}
       scope="col"
       className={cx(theme.table.header.cell, onClick && 'cursor-pointer', className)}
       onClick={onClick}
+      style={style}
+      {...props}
     >
       {children}
       {sortActive && sortDirection && (
@@ -66,7 +72,7 @@ Table.HeaderCell = function TableHeaderCell({
       )}
     </th>
   )
-}
+})
 
 /**
  * Table.Body component for table body
