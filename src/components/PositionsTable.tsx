@@ -1,67 +1,167 @@
 "use client"
 
-import { useState } from 'react'
+import React, { ReactNode, useState } from 'react'
 import { AssetPosition, FetchedClearinghouseState } from '../types/hyperliquidTypes'
 import { Table, Panel } from '@/components/ui'
 
 type SortDirection = 'asc' | 'desc' | null
-type SortColumn = 'coin' | 'size' | 'value' | 'entryPrice' | 'unrealizedPnl' | 'returnOnEquity' | null
+
+// Define the column configuration interface
+interface ColumnConfig {
+  id: string
+  label: string
+  getValue: (position: AssetPosition) => string | number
+  renderCell: (position: AssetPosition) => ReactNode
+}
 
 interface PositionsTableProps {
   positions: FetchedClearinghouseState['assetPositions']
 }
 
 export default function PositionsTable({ positions }: PositionsTableProps) {
-  const [sortColumn, setSortColumn] = useState<SortColumn>(null)
+  // Define column configuration as a single source of truth
+  const columns: ColumnConfig[] = [
+    {
+      id: 'coin',
+      label: 'COIN',
+      getValue: (position) => position.position.coin,
+      renderCell: (position) => <>{position.position.coin}</>
+    },
+    {
+      id: 'leverage',
+      label: 'LEV',
+      getValue: (position) => position.position.leverage?.value || 1,
+      renderCell: (position) => <>{position.position.leverage?.value ? `${position.position.leverage.value}x` : '1x'}</>
+    },
+    {
+      id: 'size',
+      label: 'SIZE',
+      getValue: (position) => parseFloat(position.position.szi),
+      renderCell: (position) => <>{parseFloat(position.position.szi).toFixed(4)}</>
+    },
+    {
+      id: 'value',
+      label: 'VALUE',
+      getValue: (position) => parseFloat(position.position.positionValue),
+      renderCell: (position) => <>${parseFloat(position.position.positionValue).toFixed(2)}</>
+    },
+    {
+      id: 'entryPrice',
+      label: 'ENTRY',
+      getValue: (position) => parseFloat(position.position.entryPx),
+      renderCell: (position) => <>${parseFloat(position.position.entryPx).toFixed(2)}</>
+    },
+    {
+      id: 'unrealizedPnl',
+      label: 'PNL',
+      getValue: (position) => parseFloat(position.position.unrealizedPnl),
+      renderCell: (position) => {
+        const pnl = parseFloat(position.position.unrealizedPnl);
+        const isPositive = pnl >= 0;
+        return (
+          <Table.Cell 
+            secondary
+            positive={isPositive}
+            negative={!isPositive}
+          >
+            ${pnl.toFixed(2)}
+          </Table.Cell>
+        );
+      }
+    },
+    {
+      id: 'returnOnEquity',
+      label: 'ROE %',
+      getValue: (position) => {
+        const pnl = parseFloat(position.position.unrealizedPnl);
+        const margin = parseFloat(position.position.marginUsed);
+        return margin > 0 ? (pnl / margin) * 100 : 0;
+      },
+      renderCell: (position) => {
+        const pnl = parseFloat(position.position.unrealizedPnl);
+        const margin = parseFloat(position.position.marginUsed);
+        const roe = margin > 0 ? (pnl / margin) * 100 : 0;
+        const isPositive = roe >= 0;
+        return (
+          <Table.Cell 
+            secondary
+            positive={isPositive}
+            negative={!isPositive}
+          >
+            {roe.toFixed(2)}%
+          </Table.Cell>
+        );
+      }
+    },
+    {
+      id: 'marginUsed',
+      label: 'MARGIN',
+      getValue: (position) => parseFloat(position.position.marginUsed),
+      renderCell: (position) => <>${parseFloat(position.position.marginUsed).toFixed(4)}</>
+    },
+    {
+      id: 'liquidationPrice',
+      label: 'LIQ PRICE',
+      getValue: (position) => parseFloat(position.position.liquidationPx || '0'),
+      renderCell: (position) => <>
+        {position.position.liquidationPx ? `$${parseFloat(position.position.liquidationPx).toFixed(2)}` : 'N/A'}
+      </>
+    },
+    {
+      id: 'funding',
+      label: 'FUNDING',
+      getValue: (position) => parseFloat(position.position.cumFunding?.allTime || '0'),
+      renderCell: (position) => <>
+        {position.position.cumFunding?.allTime 
+          ? `$${parseFloat(position.position.cumFunding.allTime).toFixed(4)}` 
+          : '$0.0000'}
+      </>
+    }
+  ];
+  
+  const [sortColumnId, setSortColumnId] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>(null)
 
   // Handle sorting when a column header is clicked
-  const handleSort = (column: SortColumn) => {
-    if (sortColumn === column) {
+  const handleSort = (columnId: string) => {
+    if (sortColumnId === columnId) {
       // Toggle direction if same column is clicked
       setSortDirection(sortDirection === 'asc' ? 'desc' : sortDirection === 'desc' ? null : 'asc')
       if (sortDirection === 'desc') {
-        setSortColumn(null)
+        setSortColumnId(null)
       }
     } else {
       // Set new column and direction
-      setSortColumn(column)
+      setSortColumnId(columnId)
       setSortDirection('asc')
     }
   }
 
   // Sort the positions based on current sort settings
   const getSortedPositions = () => {
-    if (positions == null || sortColumn == null || sortDirection == null) {
+    if (positions == null || sortColumnId == null || sortDirection == null) {
       return positions != null ? positions : []
     }
-
+    
+    const column = columns.find(col => col.id === sortColumnId);
+    if (!column) return positions;
+    
     return [...positions].sort((a, b) => {
-      // Handle different column types appropriately
-      if (sortColumn === 'coin') {
+      // Special case for string comparisons like coin names
+      const aValue = column.getValue(a);
+      const bValue = column.getValue(b);
+      
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
         return sortDirection === 'asc' 
-          ? a.position.coin.localeCompare(b.position.coin)
-          : b.position.coin.localeCompare(a.position.coin)
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue)
       }
       
-      // Map position properties to their actual paths in the data structure
-      const getPositionValue = (position: AssetPosition, column: SortColumn): string => {
-        switch(column) {
-          case 'coin': return position.position.coin
-          case 'size': return position.position.szi
-          case 'value': return position.position.positionValue
-          case 'entryPrice': return position.position.entryPx
-          case 'unrealizedPnl': return position.position.unrealizedPnl
-          case 'returnOnEquity': return position.position.returnOnEquity
-          default: return '0'
-        }
-      }
+      // For numeric values
+      const aNum = Number(aValue);
+      const bNum = Number(bValue);
       
-      // For numeric columns, convert to numbers for comparison
-      const aValue = parseFloat(getPositionValue(a, sortColumn))
-      const bValue = parseFloat(getPositionValue(b, sortColumn))
-      
-      return sortDirection === 'asc' ? aValue - bValue : bValue - aValue
+      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
     })
   }
 
@@ -81,79 +181,33 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
       <Table>
         <Table.Header>
           <tr>
-            <Table.HeaderCell 
-              onClick={() => handleSort('coin')}
-              sortActive={sortColumn === 'coin'}
-              sortDirection={sortColumn === 'coin' ? sortDirection : null}
-            >
-              Coin
-            </Table.HeaderCell>
-            <Table.HeaderCell 
-              onClick={() => handleSort('size')}
-              sortActive={sortColumn === 'size'}
-              sortDirection={sortColumn === 'size' ? sortDirection : null}
-            >
-              Size
-            </Table.HeaderCell>
-            <Table.HeaderCell 
-              onClick={() => handleSort('value')}
-              sortActive={sortColumn === 'value'}
-              sortDirection={sortColumn === 'value' ? sortDirection : null}
-            >
-              Value
-            </Table.HeaderCell>
-            <Table.HeaderCell 
-              onClick={() => handleSort('entryPrice')}
-              sortActive={sortColumn === 'entryPrice'}
-              sortDirection={sortColumn === 'entryPrice' ? sortDirection : null}
-            >
-              Entry Price
-            </Table.HeaderCell>
-            <Table.HeaderCell 
-              onClick={() => handleSort('unrealizedPnl')}
-              sortActive={sortColumn === 'unrealizedPnl'}
-              sortDirection={sortColumn === 'unrealizedPnl' ? sortDirection : null}
-            >
-              Unrealized PnL
-            </Table.HeaderCell>
-            <Table.HeaderCell 
-              onClick={() => handleSort('returnOnEquity')}
-              sortActive={sortColumn === 'returnOnEquity'}
-              sortDirection={sortColumn === 'returnOnEquity' ? sortDirection : null}
-            >
-              ROE
-            </Table.HeaderCell>
+            {columns.map(column => (
+              <Table.HeaderCell 
+                key={column.id}
+                onClick={() => handleSort(column.id)}
+                sortActive={sortColumnId === column.id}
+                sortDirection={sortColumnId === column.id ? sortDirection : null}
+              >
+                {column.label}
+              </Table.HeaderCell>
+            ))}
           </tr>
         </Table.Header>
         <Table.Body>
           {getSortedPositions().map((position: AssetPosition, index: number) => (
             <Table.Row key={position.position.coin} isEven={index % 2 === 0}>
-              <Table.Cell>
-                {position.position.coin}
-              </Table.Cell>
-              <Table.Cell secondary>
-                {parseFloat(position.position.szi).toFixed(4)}
-              </Table.Cell>
-              <Table.Cell secondary>
-                ${parseFloat(position.position.positionValue).toFixed(2)}
-              </Table.Cell>
-              <Table.Cell secondary>
-                ${parseFloat(position.position.entryPx).toFixed(2)}
-              </Table.Cell>
-              <Table.Cell 
-                secondary
-                positive={parseFloat(position.position.unrealizedPnl) >= 0}
-                negative={parseFloat(position.position.unrealizedPnl) < 0}
-              >
-                ${parseFloat(position.position.unrealizedPnl).toFixed(2)}
-              </Table.Cell>
-              <Table.Cell 
-                secondary
-                positive={parseFloat(position.position.returnOnEquity) >= 0}
-                negative={parseFloat(position.position.returnOnEquity) < 0}
-              >
-                {parseFloat(position.position.returnOnEquity).toFixed(2)}%
-              </Table.Cell>
+              {columns.map(column => (
+                <React.Fragment key={column.id}>
+                  {/* For custom cell rendering with colors */}
+                  {column.id === 'unrealizedPnl' || column.id === 'returnOnEquity' ? (
+                    column.renderCell(position)
+                  ) : (
+                    <Table.Cell secondary>
+                      {column.renderCell(position)}
+                    </Table.Cell>
+                  )}
+                </React.Fragment>
+              ))}
             </Table.Row>
           ))}
         </Table.Body>

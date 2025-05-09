@@ -11,9 +11,18 @@ export const asPosition = asObject({
   returnOnEquity: asString,
   liquidationPx: asEither(asString, asNull),
   marginUsed: asString,
-  // Add optional fields that may be present
-  leverage: asOptional(asObject({})),
-  cumFunding: asOptional(asObject({}))
+  // Define specific structures for optional fields
+  leverage: asOptional(asObject({
+    rawUsd: asOptional(asString),
+    type: asOptional(asString),
+    value: asOptional(asNumber)
+  })),
+  cumFunding: asOptional(asObject({
+    allTime: asOptional(asString),
+    sinceChange: asOptional(asString),
+    sinceOpen: asOptional(asString)
+  })),
+  maxLeverage: asOptional(asNumber)
 })
 export type Position = ReturnType<typeof asPosition>
 
