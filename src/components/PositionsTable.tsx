@@ -282,12 +282,12 @@ export default function PositionsTable({ positions, midPrices = {} }: PositionsT
   return (
     <div className="mt-6">
       <h3 className="text-lg font-semibold mb-3 text-gray-900">Positions</h3>
-      <Table>
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <Table>
           <Table.Header>
             <tr>
               <SortableContext items={columns.map(col => col.id)} strategy={horizontalListSortingStrategy}>
@@ -306,26 +306,26 @@ export default function PositionsTable({ positions, midPrices = {} }: PositionsT
               </SortableContext>
             </tr>
           </Table.Header>
-        </DndContext>
-        <Table.Body>
-          {getSortedPositions().map((position: AssetPosition, index: number) => (
-            <Table.Row key={position.position.coin} isEven={index % 2 === 0}>
-              {columns.map(column => (
-                <React.Fragment key={column.id}>
-                  {/* For custom cell rendering with colors */}
-                  {column.id === 'unrealizedPnl' || column.id === 'returnOnEquity' ? (
-                    column.renderCell(position)
-                  ) : (
-                    <Table.Cell secondary>
-                      {column.renderCell(position)}
-                    </Table.Cell>
-                  )}
-                </React.Fragment>
-              ))}
-            </Table.Row>
-          ))}
-        </Table.Body>
-      </Table>
+          <Table.Body>
+            {getSortedPositions().map((position: AssetPosition, index: number) => (
+              <Table.Row key={position.position.coin} isEven={index % 2 === 0}>
+                {columns.map(column => (
+                  <React.Fragment key={column.id}>
+                    {/* For custom cell rendering with colors */}
+                    {column.id === 'unrealizedPnl' || column.id === 'returnOnEquity' ? (
+                      column.renderCell(position)
+                    ) : (
+                      <Table.Cell secondary>
+                        {column.renderCell(position)}
+                      </Table.Cell>
+                    )}
+                  </React.Fragment>
+                ))}
+              </Table.Row>
+            ))}
+          </Table.Body>
+        </Table>
+      </DndContext>
     </div>
   )
 }
