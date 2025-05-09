@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useWallet } from '@/context/WalletContext'
-import { subscribeToUserState } from '@/services/hyperliquidService'
+import { subscribeToUserState, subscribeToMidPrices } from '@/services/hyperliquidService'
 import AccountSummary from '@/components/AccountSummary'
 import PositionsTable from '@/components/PositionsTable'
 import { useAsyncEffect } from '@/hooks/useAsyncEffect'
@@ -15,6 +15,7 @@ export default function MainView() {
   const [accountState, setAccountState] = useState<AccountState>()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string>()
+  const [midPrices, setMidPrices] = useState<Record<string, string>>({})
 
   useAsyncEffect(
     async () => {
@@ -23,6 +24,20 @@ export default function MainView() {
       console.log('MainView: Account changed, initializing data')
       setIsLoading(true)
       setError(undefined)
+      
+      // Track cleanup functions
+      const cleanupFunctions: Array<() => void> = []
+      
+      // Subscribe to mark prices
+      try {
+        const unsubscribeMidPrices = await subscribeToMidPrices((prices) => {
+          // Update mark prices state
+          setMidPrices(prices)
+        })
+        cleanupFunctions.push(unsubscribeMidPrices)
+      } catch (error) {
+        console.error('Error subscribing to mark prices:', error)
+      }
       
       try {
         // Use explicit typing for the callback parameter
@@ -175,17 +190,17 @@ export default function MainView() {
           });
         });
         
-        // Return cleanup function
+        // Add to cleanup functions
+        cleanupFunctions.push(unsubscribe)
+        
+        // Return combined cleanup function
         return () => {
-          if (unsubscribe != null) {
-            console.log('Cleaning up WebSocket subscription');
-            unsubscribe();
-          }
-        };
-      } catch (err) {
-        setError('Failed to set up data connection. Please try again.');
-        console.error('Error setting up WebSocket subscription:', err);
-        setIsLoading(false);
+          cleanupFunctions.forEach(cleanup => cleanup())
+        }
+      } catch (error) {
+        console.error('Error setting up WebSocket subscription:', error)
+        setError('Failed to connect to Hyperliquid API. Please try again later.')
+        setIsLoading(false)
       }
     }, 
     [account], 
@@ -209,7 +224,7 @@ export default function MainView() {
       {accountState != null && isLoading === false && (
         <div className="space-y-4">
           <AccountSummary accountState={accountState} />
-          <PositionsTable positions={accountState.assetPositions} />
+          <PositionsTable positions={accountState.assetPositions} midPrices={midPrices} />
         </div>
       )}
       

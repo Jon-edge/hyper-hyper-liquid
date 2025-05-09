@@ -7,7 +7,9 @@ import {
   asFetchedClearinghouseState,
   asWsWebdata2,
   FetchedClearinghouseState,
-  WsClearinghouseState
+  WsClearinghouseState,
+  asAllMids,
+  AllMids
 } from '../types/hyperliquidTypes'
 
 // Track WebSocket subscriptions with their callbacks
@@ -199,6 +201,7 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
                       // Create a minimal AccountState from the data
                       const accountState: AccountState = {
                         assetPositions: data.assetPositions || [],
+                        midPrices: midPricesCache, // Add mark prices to account state
                         crossMarginSummary: data.crossMarginSummary,
                         marginSummary: data.marginSummary,
                         withdrawable: data.withdrawable,
@@ -598,9 +601,10 @@ export const subscribeToChannel = async <T>(channel: string, params: Subscriptio
  * Subscribe to user state updates via WebSocket
  */
 // Cache for the last known good state for each user
-// Note: Currently not used, but kept for future implementation
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const userStateCache: Record<string, FetchedClearinghouseState> = {}
+const userStateCache: Map<string, AccountState> = new Map()
+
+// Cache for market prices
+let midPricesCache: Record<string, string> = {}
 
 export const subscribeToUserState = async (address: string, onUpdate: (accountState?: AccountState) => void): Promise<() => void> => {
   if (!address) {
@@ -788,6 +792,38 @@ export const subscribeToUserState = async (address: string, onUpdate: (accountSt
  */
 export const subscribeToMarkets = async <T>(callback: (data: T) => void): Promise<() => void> => {
   return subscribeToChannel<T>('allMeta', {}, callback)
+}
+
+/**
+ * Subscribe to real-time mid prices via WebSocket
+ */
+export const subscribeToMidPrices = async (callback: (prices: Record<string, string>) => void): Promise<() => void> => {
+  console.log('Setting up mid price subscription')
+  
+  // Initialize WebSocket if not already connected
+  if (websocket === null || websocket.readyState !== WebSocket.OPEN) {
+    await initializeWebSocket()
+  }
+  
+  return subscribeToChannel<AllMids>('allMids', {}, (data) => {
+    try {
+      // Parse the data using our cleaner
+      const allMids = asAllMids(data)
+      // Update the cache
+      midPricesCache = { ...allMids.mids }
+      // Call the callback with the prices
+      callback(allMids.mids)
+    } catch (error) {
+      console.error('Error processing mid prices:', error)
+    }
+  })
+}
+
+/**
+ * Get the current cached mark prices
+ */
+export const getMidPrices = (): Record<string, string> => {
+  return midPricesCache
 }
 
 // Keep the original fetch functions as fallbacks

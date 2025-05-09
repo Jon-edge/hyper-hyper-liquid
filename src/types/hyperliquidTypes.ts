@@ -113,11 +113,18 @@ export const asWsWebdata2 = asObject({
 })
 export type WsWebdata2 = ReturnType<typeof asWsWebdata2>
 
+// Market data cleaners
+export const asAllMids = asObject({
+  mids: asObject(asString)
+})
+export type AllMids = ReturnType<typeof asAllMids>
+
 // UI data
 export interface AccountState {
   assetPositions: AssetPosition[],
   crossMarginSummary?: MarginSummary,
   marginSummary?: MarginSummary, // Same structure as crossMarginSummary
   withdrawable?: string,
-  crossMaintenanceMarginUsed?: string
+  crossMaintenanceMarginUsed?: string,
+  midPrices?: Record<string, string> // Map of coin to mid price
 }

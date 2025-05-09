@@ -17,9 +17,10 @@ interface ColumnConfig {
 
 interface PositionsTableProps {
   positions: FetchedClearinghouseState['assetPositions']
+  midPrices?: Record<string, string>
 }
 
-export default function PositionsTable({ positions }: PositionsTableProps) {
+export default function PositionsTable({ positions, midPrices = {} }: PositionsTableProps) {
   // Define column configuration as a single source of truth
   const columns: ColumnConfig[] = [
     {
@@ -50,7 +51,35 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
       id: 'entryPrice',
       label: 'ENTRY',
       getValue: (position) => parseFloat(position.position.entryPx),
-      renderCell: (position) => <>{formatFiat(position.position.entryPx)}</>
+      renderCell: (position) => <>{formatFiat(position.position.entryPx, true, undefined, true)}</>
+    },
+    {
+      id: 'midPrice',
+      label: 'MID',
+      getValue: (position) => {
+        const price = midPrices[position.position.coin]
+        return price ? parseFloat(price) : 0
+      },
+      renderCell: (position) => {
+        const price = midPrices[position.position.coin]
+        if (!price) return <>-</>
+        
+        // Calculate percentage difference from entry price
+        const entryPrice = parseFloat(position.position.entryPx)
+        const midPrice = parseFloat(price)
+        const priceDelta = entryPrice > 0 ? ((midPrice - entryPrice) / entryPrice) * 100 : 0
+        const isPositive = priceDelta > 0
+        const isNegative = priceDelta < 0
+        
+        return (
+          <div className="flex flex-col">
+            <div>{formatFiat(price, true, undefined, true)}</div>
+            <div className={`text-xs ${isPositive ? 'text-green-600' : isNegative ? 'text-red-600' : 'text-gray-500'}`}>
+              {priceDelta > 0 ? '+' : ''}{formatPercent(priceDelta)}
+            </div>
+          </div>
+        )
+      }
     },
     {
       id: 'unrealizedPnl',
