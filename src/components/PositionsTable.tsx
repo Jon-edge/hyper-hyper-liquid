@@ -4,6 +4,7 @@ import React, { ReactNode, useState, useCallback } from 'react'
 import { AssetPosition, FetchedClearinghouseState } from '../types/hyperliquidTypes'
 import { Table, Panel } from '@/components/ui'
 import { formatNumber, formatFiat, formatPercent } from '@/utils/formatters'
+import { useWallet } from '@/context/WalletContext'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, horizontalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -107,6 +108,8 @@ export default function PositionsTable({
   columnOrder = [], 
   onColumnOrderChange 
 }: PositionsTableProps) {
+  // Access the hideInfo state from WalletContext
+  const { hideInfo } = useWallet()
   
   // Define column configuration as a single source of truth - now using useMemo to recreate when midPrices changes
   const columns = React.useMemo<ColumnConfig[]>(() => [
@@ -132,7 +135,7 @@ export default function PositionsTable({
       id: 'value',
       label: 'VALUE',
       getValue: (position) => parseFloat(position.position.positionValue),
-      renderCell: (position) => <>{formatFiat(position.position.positionValue)}</>
+      renderCell: (position) => <>{formatFiat(position.position.positionValue, true, undefined, false, true, hideInfo)}</>
     },
     {
       id: 'entryPrice',
@@ -183,7 +186,7 @@ export default function PositionsTable({
             positive={isPositive}
             negative={!isPositive}
           >
-            {formatFiat(pnl)}
+            {formatFiat(pnl, true, undefined, false, true, hideInfo)}
           </Table.Cell>
         );
       }
@@ -216,7 +219,7 @@ export default function PositionsTable({
       id: 'marginUsed',
       label: 'MARGIN',
       getValue: (position) => parseFloat(position.position.marginUsed),
-      renderCell: (position) => <>{formatFiat(position.position.marginUsed)}</>
+      renderCell: (position) => <>{formatFiat(position.position.marginUsed, true, undefined, false, true, hideInfo)}</>
     },
     {
       id: 'liquidationPrice',

@@ -9,6 +9,8 @@ interface WalletContextType {
   disconnect: () => void
   isConnecting: boolean
   provider: ethers.providers.Web3Provider | null
+  hideInfo: boolean
+  toggleHideInfo: () => void
 }
 
 const WalletContext = createContext<WalletContextType>({
@@ -16,7 +18,9 @@ const WalletContext = createContext<WalletContextType>({
   connect: async () => {},
   disconnect: () => {},
   isConnecting: false,
-  provider: null
+  provider: null,
+  hideInfo: false,
+  toggleHideInfo: () => {}
 })
 
 export const useWallet = () => useContext(WalletContext)
@@ -29,6 +33,7 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
   const [account, setAccount] = useState<string | null>(null)
   const [isConnecting, setIsConnecting] = useState(false)
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null)
+  const [hideInfo, setHideInfo] = useState(false)
 
   useEffect(() => {
     // Check if MetaMask is installed
@@ -89,6 +94,18 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
   const disconnect = () => {
     setAccount(null)
   }
+  
+  const toggleHideInfo = () => {
+    // Log the state change with structured format
+    console.log({
+      event: 'account_info_visibility_changed',
+      timestamp: new Date().toISOString(),
+      from: hideInfo ? 'hidden' : 'visible',
+      to: hideInfo ? 'visible' : 'hidden'
+    })
+    
+    setHideInfo(prev => !prev)
+  }
 
   return (
     <WalletContext.Provider
@@ -97,7 +114,9 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
         connect,
         disconnect,
         isConnecting,
-        provider
+        provider,
+        hideInfo,
+        toggleHideInfo
       }}
     >
       {children}

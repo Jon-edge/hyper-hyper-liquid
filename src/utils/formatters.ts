@@ -93,8 +93,14 @@ export function formatFiat(
   value: number | string,
   showCommas: boolean = true,
   forcePrecision?: number,
-  adaptiveSmallValuePrecision: boolean = false
+  adaptiveSmallValuePrecision: boolean = false,
+  isSensitive: boolean = false,
+  hideInfo: boolean = false
 ): string {
+  // Return redacted value if this is sensitive and hide info is enabled
+  if (isSensitive && hideInfo) {
+    return '$ ••••••';
+  }
   // Convert to number if it's a string
   const num = typeof value === 'string' ? parseFloat(value) : value;
   
