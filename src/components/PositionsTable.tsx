@@ -3,6 +3,7 @@
 import React, { ReactNode, useState } from 'react'
 import { AssetPosition, FetchedClearinghouseState } from '../types/hyperliquidTypes'
 import { Table, Panel } from '@/components/ui'
+import { formatNumber, formatFiat, formatPercent } from '@/utils/formatters'
 
 type SortDirection = 'asc' | 'desc' | null
 
@@ -37,19 +38,19 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
       id: 'size',
       label: 'SIZE',
       getValue: (position) => parseFloat(position.position.szi),
-      renderCell: (position) => <>{parseFloat(position.position.szi).toFixed(4)}</>
+      renderCell: (position) => <>{formatNumber(position.position.szi, 4, 0, undefined, true)}</>
     },
     {
       id: 'value',
       label: 'VALUE',
       getValue: (position) => parseFloat(position.position.positionValue),
-      renderCell: (position) => <>${parseFloat(position.position.positionValue).toFixed(2)}</>
+      renderCell: (position) => <>{formatFiat(position.position.positionValue)}</>
     },
     {
       id: 'entryPrice',
       label: 'ENTRY',
       getValue: (position) => parseFloat(position.position.entryPx),
-      renderCell: (position) => <>${parseFloat(position.position.entryPx).toFixed(2)}</>
+      renderCell: (position) => <>{formatFiat(position.position.entryPx)}</>
     },
     {
       id: 'unrealizedPnl',
@@ -64,7 +65,7 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
             positive={isPositive}
             negative={!isPositive}
           >
-            ${pnl.toFixed(2)}
+            {formatFiat(pnl)}
           </Table.Cell>
         );
       }
@@ -88,7 +89,7 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
             positive={isPositive}
             negative={!isPositive}
           >
-            {roe.toFixed(2)}%
+            {formatPercent(roe)}
           </Table.Cell>
         );
       }
@@ -97,14 +98,16 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
       id: 'marginUsed',
       label: 'MARGIN',
       getValue: (position) => parseFloat(position.position.marginUsed),
-      renderCell: (position) => <>${parseFloat(position.position.marginUsed).toFixed(4)}</>
+      renderCell: (position) => <>{formatFiat(position.position.marginUsed)}</>
     },
     {
       id: 'liquidationPrice',
       label: 'LIQ PRICE',
       getValue: (position) => parseFloat(position.position.liquidationPx || '0'),
       renderCell: (position) => <>
-        {position.position.liquidationPx ? `$${parseFloat(position.position.liquidationPx).toFixed(2)}` : 'N/A'}
+        {position.position.liquidationPx 
+          ? formatFiat(position.position.liquidationPx) 
+          : 'N/A'}
       </>
     },
     {
@@ -113,8 +116,8 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
       getValue: (position) => parseFloat(position.position.cumFunding?.allTime || '0'),
       renderCell: (position) => <>
         {position.position.cumFunding?.allTime 
-          ? `$${parseFloat(position.position.cumFunding.allTime).toFixed(4)}` 
-          : '$0.0000'}
+          ? formatFiat(position.position.cumFunding.allTime) 
+          : formatFiat(0)}
       </>
     }
   ];

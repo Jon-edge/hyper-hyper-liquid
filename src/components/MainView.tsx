@@ -8,6 +8,7 @@ import PositionsTable from '@/components/PositionsTable'
 import { useAsyncEffect } from '@/hooks/useAsyncEffect'
 import type { AccountState, AssetPosition } from '../types/hyperliquidTypes'
 import { Card, Loader, Message } from '@/components/ui'
+import { formatFiat, formatNumber, formatPercent } from '@/utils/formatters'
 
 export default function MainView() {
   const { account } = useWallet()
@@ -37,11 +38,15 @@ export default function MainView() {
           // No need to check for error in the new structure as it's not part of UserState
           
           // Log detailed information about the update
-          console.log('Update details:')
-          console.log('- Account Value:', newAccountState.crossMarginSummary?.accountValue)
-          console.log('- Withdrawable:', newAccountState.withdrawable)
-          console.log('- Leverage:', newAccountState.crossMarginSummary?.leverage)
-          console.log('- Position count:', newAccountState.assetPositions.length)
+          // Log account details in a single structured object
+          console.log({
+            event: 'account_state_update',
+            timestamp: new Date().toISOString(),
+            account_value: formatFiat(newAccountState.crossMarginSummary?.accountValue || '0'),
+            withdrawable: formatFiat(newAccountState.withdrawable || '0'),
+            leverage: formatNumber(newAccountState.crossMarginSummary?.leverage || '0', 2) + 'x',
+            position_count: newAccountState.assetPositions.length
+          })
           
           setAccountState((prevAccountState?: AccountState) => {
             // If we have no positions in the update but have positions in the current state,
@@ -76,13 +81,22 @@ export default function MainView() {
                     const changes: Record<string, { from: any, to: any }> = {};
                     
                     if (newPos.position.szi !== oldPos.position.szi) {
-                      changes.size = { from: oldPos.position.szi, to: newPos.position.szi };
+                      changes.size = { 
+                        from: formatNumber(oldPos.position.szi), 
+                        to: formatNumber(newPos.position.szi) 
+                      };
                     }
                     if (newPos.position.positionValue !== oldPos.position.positionValue) {
-                      changes.value = { from: oldPos.position.positionValue, to: newPos.position.positionValue };
+                      changes.value = { 
+                        from: formatFiat(oldPos.position.positionValue), 
+                        to: formatFiat(newPos.position.positionValue) 
+                      };
                     }
                     if (newPos.position.unrealizedPnl !== oldPos.position.unrealizedPnl) {
-                      changes.pnl = { from: oldPos.position.unrealizedPnl, to: newPos.position.unrealizedPnl };
+                      changes.pnl = { 
+                        from: formatFiat(oldPos.position.unrealizedPnl), 
+                        to: formatFiat(newPos.position.unrealizedPnl) 
+                      };
                     }
                     
                     // Only add if there are actual changes
@@ -92,9 +106,9 @@ export default function MainView() {
                   } else {
                     // Track new positions
                     newPositions[newPos.position.coin] = {
-                      size: newPos.position.szi,
-                      value: newPos.position.positionValue,
-                      pnl: newPos.position.unrealizedPnl
+                      size: formatNumber(newPos.position.szi),
+                      value: formatFiat(newPos.position.positionValue),
+                      pnl: formatFiat(newPos.position.unrealizedPnl)
                     };
                   }
                 });
@@ -121,22 +135,22 @@ export default function MainView() {
                 
                 if (newAccountState.crossMarginSummary?.accountValue !== prevAccountState.crossMarginSummary?.accountValue) {
                   changes.accountValue = { 
-                    from: prevAccountState.crossMarginSummary?.accountValue, 
-                    to: newAccountState.crossMarginSummary?.accountValue 
+                    from: formatFiat(prevAccountState.crossMarginSummary?.accountValue || '0'), 
+                    to: formatFiat(newAccountState.crossMarginSummary?.accountValue || '0') 
                   };
                 }
                 
                 if (newAccountState.withdrawable !== prevAccountState.withdrawable) {
                   changes.withdrawable = { 
-                    from: prevAccountState.withdrawable, 
-                    to: newAccountState.withdrawable 
+                    from: formatFiat(prevAccountState.withdrawable || '0'), 
+                    to: formatFiat(newAccountState.withdrawable || '0') 
                   };
                 }
                 
                 if (newAccountState.crossMarginSummary?.leverage !== prevAccountState.crossMarginSummary?.leverage) {
                   changes.leverage = { 
-                    from: prevAccountState.crossMarginSummary?.leverage, 
-                    to: newAccountState.crossMarginSummary?.leverage 
+                    from: formatNumber(prevAccountState.crossMarginSummary?.leverage || '0', 2) + 'x', 
+                    to: formatNumber(newAccountState.crossMarginSummary?.leverage || '0', 2) + 'x' 
                   };
                 }
                 
