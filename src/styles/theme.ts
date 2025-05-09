@@ -63,6 +63,6 @@ export const theme = {
 }
 
 // Helper for combining multiple theme classes
-export const cx = (...classes: string[]): string => {
+export const cx = (...classes: (string | undefined | null | false)[]): string => {
   return classes.filter(Boolean).join(' ')
 }

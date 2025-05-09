@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { AssetPosition, FetchedClearinghouseState } from '../types/hyperliquidTypes'
-import { theme, cx } from '../styles/theme'
+import { Table, Panel } from '@/components/ui'
 
 type SortDirection = 'asc' | 'desc' | null
 type SortColumn = 'coin' | 'size' | 'value' | 'entryPrice' | 'unrealizedPnl' | 'returnOnEquity' | null
@@ -67,107 +67,97 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
 
   if (positions.length === 0) {
     return (
-      <div className={cx("mt-6", theme.containers.panel, theme.containers.panelVariants.gray)}>
-        <p className={theme.text.body.muted}>No positions found</p>
+      <div className="mt-6">
+        <Panel variant="gray">
+          <p>No positions found</p>
+        </Panel>
       </div>
     )
   }
 
   return (
     <div className="mt-6">
-      <h3 className={theme.text.heading.section}>Positions</h3>
-      <div className="overflow-x-auto">
-        <table className={theme.table.container}>
-          <thead className={theme.table.header.row}>
-            <tr>
-              <th 
-                scope="col" 
-                className={cx(theme.table.header.cell, 'cursor-pointer')}
-                onClick={() => handleSort('coin')}
+      <h3 className="text-lg font-semibold mb-3 text-gray-900">Positions</h3>
+      <Table>
+        <Table.Header>
+          <tr>
+            <Table.HeaderCell 
+              onClick={() => handleSort('coin')}
+              sortActive={sortColumn === 'coin'}
+              sortDirection={sortColumn === 'coin' ? sortDirection : null}
+            >
+              Coin
+            </Table.HeaderCell>
+            <Table.HeaderCell 
+              onClick={() => handleSort('size')}
+              sortActive={sortColumn === 'size'}
+              sortDirection={sortColumn === 'size' ? sortDirection : null}
+            >
+              Size
+            </Table.HeaderCell>
+            <Table.HeaderCell 
+              onClick={() => handleSort('value')}
+              sortActive={sortColumn === 'value'}
+              sortDirection={sortColumn === 'value' ? sortDirection : null}
+            >
+              Value
+            </Table.HeaderCell>
+            <Table.HeaderCell 
+              onClick={() => handleSort('entryPrice')}
+              sortActive={sortColumn === 'entryPrice'}
+              sortDirection={sortColumn === 'entryPrice' ? sortDirection : null}
+            >
+              Entry Price
+            </Table.HeaderCell>
+            <Table.HeaderCell 
+              onClick={() => handleSort('unrealizedPnl')}
+              sortActive={sortColumn === 'unrealizedPnl'}
+              sortDirection={sortColumn === 'unrealizedPnl' ? sortDirection : null}
+            >
+              Unrealized PnL
+            </Table.HeaderCell>
+            <Table.HeaderCell 
+              onClick={() => handleSort('returnOnEquity')}
+              sortActive={sortColumn === 'returnOnEquity'}
+              sortDirection={sortColumn === 'returnOnEquity' ? sortDirection : null}
+            >
+              ROE
+            </Table.HeaderCell>
+          </tr>
+        </Table.Header>
+        <Table.Body>
+          {getSortedPositions().map((position: AssetPosition, index: number) => (
+            <Table.Row key={position.position.coin} isEven={index % 2 === 0}>
+              <Table.Cell>
+                {position.position.coin}
+              </Table.Cell>
+              <Table.Cell secondary>
+                {parseFloat(position.position.szi).toFixed(4)}
+              </Table.Cell>
+              <Table.Cell secondary>
+                ${parseFloat(position.position.positionValue).toFixed(2)}
+              </Table.Cell>
+              <Table.Cell secondary>
+                ${parseFloat(position.position.entryPx).toFixed(2)}
+              </Table.Cell>
+              <Table.Cell 
+                secondary
+                positive={parseFloat(position.position.unrealizedPnl) >= 0}
+                negative={parseFloat(position.position.unrealizedPnl) < 0}
               >
-                Coin
-                {sortColumn === 'coin' && (
-                  <span className="ml-1">{sortDirection === 'asc' ? '\u2191' : '\u2193'}</span>
-                )}
-              </th>
-              <th 
-                scope="col" 
-                className={cx(theme.table.header.cell, 'cursor-pointer')}
-                onClick={() => handleSort('size')}
+                ${parseFloat(position.position.unrealizedPnl).toFixed(2)}
+              </Table.Cell>
+              <Table.Cell 
+                secondary
+                positive={parseFloat(position.position.returnOnEquity) >= 0}
+                negative={parseFloat(position.position.returnOnEquity) < 0}
               >
-                Size
-                {sortColumn === 'size' && (
-                  <span className="ml-1">{sortDirection === 'asc' ? '\u2191' : '\u2193'}</span>
-                )}
-              </th>
-              <th 
-                scope="col" 
-                className={cx(theme.table.header.cell, 'cursor-pointer')}
-                onClick={() => handleSort('value')}
-              >
-                Value
-                {sortColumn === 'value' && (
-                  <span className="ml-1">{sortDirection === 'asc' ? '\u2191' : '\u2193'}</span>
-                )}
-              </th>
-              <th 
-                scope="col" 
-                className={cx(theme.table.header.cell, 'cursor-pointer')}
-                onClick={() => handleSort('entryPrice')}
-              >
-                Entry Price
-                {sortColumn === 'entryPrice' && (
-                  <span className="ml-1">{sortDirection === 'asc' ? '\u2191' : '\u2193'}</span>
-                )}
-              </th>
-              <th 
-                scope="col" 
-                className={cx(theme.table.header.cell, 'cursor-pointer')}
-                onClick={() => handleSort('unrealizedPnl')}
-              >
-                Unrealized PnL
-                {sortColumn === 'unrealizedPnl' && (
-                  <span className="ml-1">{sortDirection === 'asc' ? '\u2191' : '\u2193'}</span>
-                )}
-              </th>
-              <th 
-                scope="col" 
-                className={cx(theme.table.header.cell, 'cursor-pointer')}
-                onClick={() => handleSort('returnOnEquity')}
-              >
-                ROE
-                {sortColumn === 'returnOnEquity' && (
-                  <span className="ml-1">{sortDirection === 'asc' ? '\u2191' : '\u2193'}</span>
-                )}
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {getSortedPositions().map((position: AssetPosition, index: number) => (
-              <tr key={position.position.coin} className={index % 2 === 0 ? theme.table.body.row.even : theme.table.body.row.odd}>
-                <td className={theme.table.body.cell.default}>
-                  {position.position.coin}
-                </td>
-                <td className={theme.table.body.cell.secondary}>
-                  {parseFloat(position.position.szi).toFixed(4)}
-                </td>
-                <td className={theme.table.body.cell.secondary}>
-                  ${parseFloat(position.position.positionValue).toFixed(2)}
-                </td>
-                <td className={theme.table.body.cell.secondary}>
-                  ${parseFloat(position.position.entryPx).toFixed(2)}
-                </td>
-                <td className={cx(theme.table.body.cell.secondary, parseFloat(position.position.unrealizedPnl) >= 0 ? theme.text.values.positive : theme.text.values.negative)}>
-                  ${parseFloat(position.position.unrealizedPnl).toFixed(2)}
-                </td>
-                <td className={cx(theme.table.body.cell.secondary, parseFloat(position.position.returnOnEquity) >= 0 ? theme.text.values.positive : theme.text.values.negative)}>
-                  {parseFloat(position.position.returnOnEquity).toFixed(2)}%
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                {parseFloat(position.position.returnOnEquity).toFixed(2)}%
+              </Table.Cell>
+            </Table.Row>
+          ))}
+        </Table.Body>
+      </Table>
     </div>
   )
 }

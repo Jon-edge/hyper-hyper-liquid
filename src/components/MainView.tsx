@@ -7,7 +7,7 @@ import AccountSummary from '@/components/AccountSummary'
 import PositionsTable from '@/components/PositionsTable'
 import { useAsyncEffect } from '@/hooks/useAsyncEffect'
 import type { AccountState, AssetPosition } from '../types/hyperliquidTypes'
-import { theme, cx } from '@/styles/theme'
+import { Card, Loader, Message } from '@/components/ui'
 
 export default function MainView() {
   const { account } = useWallet()
@@ -125,20 +125,17 @@ export default function MainView() {
   }, [account], 'hyperliquid-user-state')
 
   return (
-    <div className={theme.containers.card}>
-      <h2 className={theme.text.heading.main}>Account Overview</h2>
+    <Card>
+      <Card.Header>Account Overview</Card.Header>
       
       {isLoading && (
-        <div className="flex justify-center items-center py-4">
-          <div className={theme.components.loader}></div>
-          <span className="ml-2">Loading account data...</span>
-        </div>
+        <Loader label="Loading account data..." />
       )}
       
       {error != null && (
-        <div className={cx(theme.containers.panel, theme.containers.panelVariants.red, 'mb-4 text-red-700')}>
+        <Message variant="error">
           {error}
-        </div>
+        </Message>
       )}
       
       {accountState != null && isLoading === false && (
@@ -149,10 +146,10 @@ export default function MainView() {
       )}
       
       {account == null && (
-        <div className="p-4 bg-yellow-50 rounded-lg">
-          <p className="text-gray-700">Please connect your wallet to view your account balance.</p>
-        </div>
+        <Message variant="warning">
+          <p>Please connect your wallet to view your account data.</p>
+        </Message>
       )}
-    </div>
+    </Card>
   )
 }
