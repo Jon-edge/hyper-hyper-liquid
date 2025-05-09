@@ -40,7 +40,7 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {!account && (
+        {account == null && (
           <div className="bg-white shadow-sm rounded-lg p-6 mb-8">
             <h2 className="text-lg font-medium text-gray-900 mb-4">Welcome to Hyper Hyperliquid</h2>
             <p className="text-gray-600 mb-4">

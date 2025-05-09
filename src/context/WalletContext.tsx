@@ -32,7 +32,7 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
 
   useEffect(() => {
     // Check if MetaMask is installed
-    if (typeof window !== 'undefined' && window.ethereum) {
+    if (window?.ethereum != null) {
       // Initialize provider
       const ethProvider = new ethers.providers.Web3Provider(window.ethereum)
       setProvider(ethProvider)
@@ -68,7 +68,7 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
   }, [])
 
   const connect = async () => {
-    if (!window.ethereum) {
+    if (window.ethereum == null) {
       alert('Please install MetaMask to use this feature')
       return
     }

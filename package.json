@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@metamask/providers": "^22.1.0",
+    "cleaners": "^0.3.17",
     "ethers": "^5.7.2",
     "next": "15.3.1",
     "react": "^19.0.0",

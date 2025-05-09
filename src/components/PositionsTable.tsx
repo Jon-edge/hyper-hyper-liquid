@@ -1,13 +1,13 @@
 "use client"
 
 import { useState } from 'react'
-import { UserState } from '@/services/hyperliquidService'
+import { AssetPosition, FetchedClearinghouseState } from '../types/hyperliquidTypes'
 
 type SortDirection = 'asc' | 'desc' | null
 type SortColumn = 'coin' | 'size' | 'value' | 'entryPrice' | 'unrealizedPnl' | 'returnOnEquity' | null
 
 interface PositionsTableProps {
-  positions: UserState['positions']
+  positions: FetchedClearinghouseState['assetPositions']
 }
 
 export default function PositionsTable({ positions }: PositionsTableProps) {
@@ -31,21 +31,34 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
 
   // Sort the positions based on current sort settings
   const getSortedPositions = () => {
-    if (!positions || !sortColumn || !sortDirection) {
-      return positions || []
+    if (positions == null || sortColumn == null || sortDirection == null) {
+      return positions != null ? positions : []
     }
 
     return [...positions].sort((a, b) => {
       // Handle different column types appropriately
       if (sortColumn === 'coin') {
         return sortDirection === 'asc' 
-          ? a.coin.localeCompare(b.coin)
-          : b.coin.localeCompare(a.coin)
+          ? a.position.coin.localeCompare(b.position.coin)
+          : b.position.coin.localeCompare(a.position.coin)
+      }
+      
+      // Map position properties to their actual paths in the data structure
+      const getPositionValue = (position: AssetPosition, column: SortColumn): string => {
+        switch(column) {
+          case 'coin': return position.position.coin
+          case 'size': return position.position.szi
+          case 'value': return position.position.positionValue
+          case 'entryPrice': return position.position.entryPx
+          case 'unrealizedPnl': return position.position.unrealizedPnl
+          case 'returnOnEquity': return position.position.returnOnEquity
+          default: return '0'
+        }
       }
       
       // For numeric columns, convert to numbers for comparison
-      const aValue = parseFloat(a[sortColumn] || '0')
-      const bValue = parseFloat(b[sortColumn] || '0')
+      const aValue = parseFloat(getPositionValue(a, sortColumn))
+      const bValue = parseFloat(getPositionValue(b, sortColumn))
       
       return sortDirection === 'asc' ? aValue - bValue : bValue - aValue
     })
@@ -129,25 +142,25 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {getSortedPositions().map((position, index) => (
-              <tr key={position.coin} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+            {getSortedPositions().map((position: AssetPosition, index: number) => (
+              <tr key={position.position.coin} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {position.coin}
+                  {position.position.coin}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {parseFloat(position.size).toFixed(4)}
+                  {parseFloat(position.position.szi).toFixed(4)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  ${parseFloat(position.value).toFixed(2)}
+                  ${parseFloat(position.position.positionValue).toFixed(2)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  ${parseFloat(position.entryPrice).toFixed(2)}
+                  ${parseFloat(position.position.entryPx).toFixed(2)}
                 </td>
-                <td className={`px-6 py-4 whitespace-nowrap text-sm ${parseFloat(position.unrealizedPnl) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  ${parseFloat(position.unrealizedPnl).toFixed(2)}
+                <td className={`px-6 py-4 whitespace-nowrap text-sm ${parseFloat(position.position.unrealizedPnl) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  ${parseFloat(position.position.unrealizedPnl).toFixed(2)}
                 </td>
-                <td className={`px-6 py-4 whitespace-nowrap text-sm ${parseFloat(position.returnOnEquity) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {parseFloat(position.returnOnEquity).toFixed(2)}%
+                <td className={`px-6 py-4 whitespace-nowrap text-sm ${parseFloat(position.position.returnOnEquity) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {parseFloat(position.position.returnOnEquity).toFixed(2)}%
                 </td>
               </tr>
             ))}

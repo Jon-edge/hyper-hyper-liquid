@@ -31,7 +31,9 @@ const eslintConfig = [
       "@typescript-eslint/require-array-sort-compare": "off",
       "@typescript-eslint/restrict-plus-operands": "off",
       "@typescript-eslint/restrict-template-expressions": "off",
-      "@typescript-eslint/strict-boolean-expressions": "off",
+      "@typescript-eslint/strict-boolean-expressions": ["error", {
+        "allowNullableObject": false
+      }],
       
       // React hooks rules
       "react-hooks/exhaustive-deps": ["error", {
@@ -44,6 +46,12 @@ const eslintConfig = [
   // Add specific rules for TypeScript files
   {
     files: ["**/*.ts", "**/*.tsx"],
+    languageOptions: {
+      parserOptions: {
+        project: "./tsconfig.json",
+        tsconfigRootDir: __dirname,
+      },
+    },
     rules: {
       "@typescript-eslint/switch-exhaustiveness-check": "error"
     },
