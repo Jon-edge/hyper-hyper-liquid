@@ -258,21 +258,55 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
           console.log(`Resubscribing to ${websocketSubscriptions.size} channels`)
           // We need to resubscribe to all channels
           websocketSubscriptions.forEach((_, channel) => {
-            const [type, paramsStr] = channel.split(':', 2)
-            if (type != null && type !== '' && paramsStr != null && paramsStr !== '' && websocket != null) {
-              try {
-                const params = JSON.parse(paramsStr)
-                const subscriptionMessage = {
-                  method: 'subscribe',
-                  subscription: {
-                    type,
-                    ...params
-                  }
-                }
-                websocket.send(JSON.stringify(subscriptionMessage))
-              } catch (err) {
-                console.error('Error resubscribing to channel:', err)
+            try {
+              const [type, paramsStr] = channel.split(':', 2)
+              
+              // Validate the channel parts
+              if (!type || !paramsStr || !websocket) {
+                console.log('Skipping invalid channel:', channel)
+                return // Skip this channel
               }
+              
+              // Special handling for channel formats based on type
+              let subscriptionMessage: any
+              
+              if (type === 'webData2') {
+                // Handle webData2 subscriptions which have a user field
+                const userMatch = paramsStr.match(/\{"user":"([^"]+)"\}/);
+                if (userMatch && userMatch[1]) {
+                  const user = userMatch[1];
+                  subscriptionMessage = {
+                    method: 'subscribe',
+                    subscription: {
+                      type: 'webData2',
+                      user: user
+                    }
+                  };
+                }
+              } else {
+                // Regular JSON parsing for other subscription types
+                try {
+                  const params = JSON.parse(paramsStr);
+                  subscriptionMessage = {
+                    method: 'subscribe',
+                    subscription: {
+                      type,
+                      ...params
+                    }
+                  };
+                } catch (parseErr) {
+                  console.warn(`Could not parse params for channel ${type}:`, parseErr);
+                  return; // Skip this channel
+                }
+              }
+              
+              // Send the subscription message if valid
+              if (subscriptionMessage) {
+                console.log('Resubscribing with message:', JSON.stringify(subscriptionMessage));
+                websocket.send(JSON.stringify(subscriptionMessage));
+              }
+            } catch (err) {
+              console.error('Error resubscribing to channel:', err);
             }
           })
         }
@@ -344,10 +378,20 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
           }
           
           // Check if the message is a pong response
-          if (event.data === 'pong') {
-            console.log('WebSocket message received: pong')
-            lastPongReceived = Date.now()
-            return
+          try {
+            const parsedData = JSON.parse(event.data)
+            if (parsedData && parsedData.channel === 'pong') {
+              console.log('WebSocket message received: pong')
+              lastPongReceived = Date.now()
+              return
+            }
+          } catch {
+            // If it's not JSON, check if it's a plain string pong
+            if (event.data === 'pong') {
+              console.log('WebSocket message received: plain pong')
+              lastPongReceived = Date.now()
+              return
+            }
           }
           
           // Parse the message data
