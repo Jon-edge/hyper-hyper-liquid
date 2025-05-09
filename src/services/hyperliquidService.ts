@@ -439,7 +439,7 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
           console.log('WebSocket message received:', message.channel)
           
           // Enhanced debugging - log the full message
-          console.log('Full WebSocket message:', message)
+          console.log('Full WebSocket message:',message.channel, message)
           
           // Handle subscription response
           if (message.channel === 'subscriptionResponse') {
@@ -459,17 +459,17 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
               // Find subscriptions for this channel
               const user = message.data.user ?? ''
               const subscriptionKey = `webData2:{"user":"${user}"}`
-              console.log('Processing webData2 update for subscription:', subscriptionKey)
+              // console.log('Processing webData2 update for subscription:', subscriptionKey)
               
               // Check if we have a subscription for this user
               const callback = websocketSubscriptions.get(subscriptionKey)
               if (callback != null) {
                 // Process the data and call the callback
                 callback(message.data)
-                console.log('Processed webData2 update for', subscriptionKey)
+                // console.log('Processed webData2 update for', subscriptionKey)
               } else {
-                console.log('No subscription found for webData2 update with key:', subscriptionKey)
-                console.log('Available subscriptions:', Array.from(websocketSubscriptions.keys()))
+                // console.log('No subscription found for webData2 update with key:', subscriptionKey)
+                // console.log('Available subscriptions:', Array.from(websocketSubscriptions.keys()))
               }
             }
           }
@@ -478,35 +478,86 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
           
           // For any other channels, try to find a matching subscription
           else if (message.channel != null && message.data != null) {
-            console.log(`Received update for channel: ${message.channel}`)
-            
-            // Try to find a matching subscription by channel prefix
-            const matchingKeys = Array.from(websocketSubscriptions.keys())
-              .filter(key => key.startsWith(message.channel + ':'))
-            
-            if (matchingKeys.length > 0) {
-              console.log(`Found ${matchingKeys.length} matching subscriptions for channel ${message.channel}`)
-              matchingKeys.forEach(key => {
-                const callback = websocketSubscriptions.get(key)
+            // Special handling for allMids updates since they're critical
+            if (message.channel === 'allMids') {
+              // Get BTC price at WebSocket message receipt if available
+              const btcPrice = message.data && 
+                              typeof message.data === 'object' && 
+                              message.data.mids && 
+                              typeof message.data.mids === 'object' && 
+                              message.data.mids['BTC'] ? 
+                              message.data.mids['BTC'] : 'unavailable'
+              
+              console.log({
+                event: 'allMids_update_received',
+                timestamp: new Date().toISOString(),
+                btc_price: btcPrice
+              })
+              
+              // Check for direct allMids subscription first
+              const callback = websocketSubscriptions.get('allMids')  
+              if (callback) {
+                callback(message.data)
+              }
+              
+              // Also check for the parameterized version
+              const paramCallback = websocketSubscriptions.get('allMids:{}')
+              if (paramCallback) {
+                paramCallback(message.data)
+              }
+            } else {
+              console.log({
+                event: 'websocket_channel_update', 
+                timestamp: new Date().toISOString(),
+                channel: message.channel
+              })
+              
+              // Try to find a matching subscription by channel prefix
+              const matchingKeys = Array.from(websocketSubscriptions.keys())
+                .filter(key => key.startsWith(message.channel + ':'))
+              
+              if (matchingKeys.length > 0) {
+                console.log({
+                  event: 'matching_subscriptions_found', 
+                  timestamp: new Date().toISOString(),
+                  count: matchingKeys.length, 
+                  channel: message.channel
+                })
+                
+                matchingKeys.forEach(key => {
+                  const callback = websocketSubscriptions.get(key)
+                  if (callback != null) {
+                    callback(message.data)
+                  }
+                })
+              } else if (websocketSubscriptions.has(message.channel)) {
+                // For channels without parameters
+                const callback = websocketSubscriptions.get(message.channel)
                 if (callback != null) {
                   callback(message.data)
                 }
-              })
-            } else if (websocketSubscriptions.has(message.channel)) {
-              // For channels without parameters
-              const callback = websocketSubscriptions.get(message.channel)
-              if (callback != null) {
-                callback(message.data)
+              } else {
+                console.log({
+                  event: 'no_handler_found',
+                  timestamp: new Date().toISOString(),
+                  channel: message.channel
+                })
               }
-            } else {
-              console.log(`No handler found for channel: ${message.channel}`)
             }
           } else if (message.error != null) {
-            console.error('WebSocket error response:', message.error)
+            console.log({
+              event: 'websocket_error_response',
+              timestamp: new Date().toISOString(),
+              error: message.error
+            })
           }
         } catch (err) {
-          console.error('Error processing WebSocket message:', err)
-          console.error('Raw message:', event.data)
+          console.log({
+            event: 'websocket_message_processing_error',
+            timestamp: new Date().toISOString(),
+            error: err instanceof Error ? err.message : 'Unknown error',
+            raw_message: typeof event.data === 'string' ? event.data.substring(0, 100) : 'Non-string data'
+          })
         }
       }
       
@@ -845,25 +896,114 @@ export const subscribeToMarkets = async <T>(callback: (data: T) => void): Promis
  * Subscribe to real-time mid prices via WebSocket
  */
 export const subscribeToMidPrices = async (callback: (prices: Record<string, string>) => void): Promise<() => void> => {
-  console.log('Setting up mid price subscription')
+  console.log({
+    event: 'mid_price_subscription_setup',
+    timestamp: new Date().toISOString()
+  })
   
   // Initialize WebSocket if not already connected
   if (websocket === null || websocket.readyState !== WebSocket.OPEN) {
     await initializeWebSocket()
   }
   
-  return subscribeToChannel<AllMids>('allMids', {}, (data) => {
+  // Check if we have cached mid prices already, use them immediately
+  if (Object.keys(midPricesCache).length > 0) {
+    console.log({
+      event: 'using_cached_mid_prices',
+      timestamp: new Date().toISOString(),
+      count: Object.keys(midPricesCache).length
+    })
+    // Call callback with cached values immediately so UI has data
+    callback({...midPricesCache})
+  }
+  
+  // For allMids we need to register directly with the channel name
+  const subscriptionMessage = {
+    method: 'subscribe',
+    subscription: {
+      type: 'allMids'
+    }
+  }
+  
+  // Send subscription request
+  if (websocket != null && websocket.readyState === WebSocket.OPEN) {
+    websocket.send(JSON.stringify(subscriptionMessage))
+  }
+  
+  // Set up a heartbeat interval to request fresh mid prices periodically
+  // This ensures we get regular updates even if the WebSocket doesn't send them
+  const midPricesHeartbeat = setInterval(() => {
+    if (websocket != null && websocket.readyState === WebSocket.OPEN) {
+      console.log({
+        event: 'mid_prices_heartbeat_ping',
+        timestamp: new Date().toISOString()
+      })
+      // Re-subscribe to ensure we get fresh data
+      websocket.send(JSON.stringify(subscriptionMessage))
+    }
+  }, 15000) // Ping every 15 seconds to ensure mid prices stay updated
+  
+  // Create the handler function for mid price updates
+  const handleMidPrices = (data: unknown) => {
     try {
       // Parse the data using our cleaner
       const allMids = asAllMids(data)
-      // Update the cache
-      midPricesCache = { ...allMids.mids }
-      // Call the callback with the prices
-      callback(allMids.mids)
+      
+      // Force a new object creation to ensure React state updates
+      const newMidPrices = Object.assign({}, allMids.mids)
+      
+      // Update the cache with a fresh object
+      midPricesCache = newMidPrices
+      
+      // Get BTC price from parsed data
+      const btcPrice = newMidPrices['BTC'] || 'unavailable'
+      
+      // Log just before callback
+      console.log({
+        event: 'mid_prices_pre_callback',
+        timestamp: new Date().toISOString(),
+        btc_price: btcPrice
+      })
+      
+      // Call the callback with the NEW prices object
+      callback(newMidPrices)
     } catch (error) {
-      console.error('Error processing mid prices:', error)
+      console.log({
+        event: 'mid_prices_processing_error',
+        timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : 'Unknown error'
+      })
     }
-  })
+  }
+  
+  // Register only with the direct channel name to avoid subscription key issues
+  websocketSubscriptions.set('allMids', handleMidPrices)
+  
+  // Return unsubscribe function
+  return () => {
+    console.log({
+      event: 'mid_prices_unsubscribe',
+      timestamp: new Date().toISOString()
+    })
+    
+    // Clear the heartbeat interval to prevent memory leaks
+    if (midPricesHeartbeat) {
+      clearInterval(midPricesHeartbeat)
+    }
+    
+    // Send unsubscribe message
+    if (websocket != null && websocket.readyState === WebSocket.OPEN) {
+      websocket.send(JSON.stringify({
+        method: 'unsubscribe',
+        subscription: {
+          type: 'allMids'
+        }
+      }))
+    }
+    
+    // Remove subscription handler
+    websocketSubscriptions.delete('allMids')
+  }
 }
 
 /**

@@ -20,7 +20,9 @@ interface ColumnConfig {
 
 interface PositionsTableProps {
   positions: FetchedClearinghouseState['assetPositions']
-  midPrices?: Record<string, string>
+  midPrices: Record<string, string>
+  columnOrder?: string[] // Array of column IDs in their current order
+  onColumnOrderChange?: (columnOrder: string[]) => void // Callback to update column order in parent
 }
 
 // Sortable column header component
@@ -65,9 +67,49 @@ function SortableColumnHeader({ id, label, sortActive, sortDirection, onClick, c
   )
 }
 
-export default function PositionsTable({ positions, midPrices = {} }: PositionsTableProps) {
-  // Define column configuration as a single source of truth
-  const initialColumns: ColumnConfig[] = [
+// Helper function to get mid price by trying different key formats
+function getMidPriceForCoin(coin: string, midPrices: Record<string, string>): string | undefined {
+  // Try direct coin name match
+  if (midPrices[coin]) {
+    return midPrices[coin]
+  }
+  
+  // Try with @ prefix (commonly used in API)
+  if (midPrices[`@${coin}`]) {
+    return midPrices[`@${coin}`]
+  }
+  
+  // Try lowercase
+  if (midPrices[coin.toLowerCase()]) {
+    return midPrices[coin.toLowerCase()]
+  }
+  
+  // Try with index format for common coins (based on Hyperliquid API)
+  const commonCoinIndices: Record<string, string> = {
+    'BTC': '@1',
+    'ETH': '@10',
+    'SOL': '@5',
+    'AVAX': '@8',
+    'ARB': '@9',
+    'OP': '@11'
+  }
+  
+  if (commonCoinIndices[coin] && midPrices[commonCoinIndices[coin]]) {
+    return midPrices[commonCoinIndices[coin]]
+  }
+  
+  return undefined
+}
+
+export default function PositionsTable({ 
+  positions, 
+  midPrices, 
+  columnOrder = [], 
+  onColumnOrderChange 
+}: PositionsTableProps) {
+  
+  // Define column configuration as a single source of truth - now using useMemo to recreate when midPrices changes
+  const columns = React.useMemo<ColumnConfig[]>(() => [
     {
       id: 'coin',
       label: 'COIN',
@@ -102,11 +144,13 @@ export default function PositionsTable({ positions, midPrices = {} }: PositionsT
       id: 'midPrice',
       label: 'MID',
       getValue: (position) => {
-        const price = midPrices[position.position.coin]
+        const coin = position.position.coin
+        const price = getMidPriceForCoin(coin, midPrices)
         return price ? parseFloat(price) : 0
       },
       renderCell: (position) => {
-        const price = midPrices[position.position.coin]
+        const coin = position.position.coin
+        const price = getMidPriceForCoin(coin, midPrices)
         if (!price) return <>-</>
         
         // Calculate percentage difference from entry price
@@ -194,9 +238,38 @@ export default function PositionsTable({ positions, midPrices = {} }: PositionsT
           : formatFiat(0)}
       </>
     }
-  ];
+  ], [midPrices]); // Recreate columns when midPrices changes
   
-  const [columns, setColumns] = useState<ColumnConfig[]>(initialColumns)
+  // Get a map of column configs by ID for easy lookup
+  const columnsById = React.useMemo(() => {
+    return columns.reduce((acc, column) => {
+      acc[column.id] = column
+      return acc
+    }, {} as Record<string, ColumnConfig>)
+  }, [columns])
+  
+  // Create orderedColumns based on either props.columnOrder or default order
+  const orderedColumns = React.useMemo(() => {
+    // If we have a column order from props, use it to order the columns
+    if (columnOrder && columnOrder.length > 0) {
+      // Create ordered columns array based on saved order
+      const ordered = columnOrder
+        .filter(id => columnsById[id]) // Only include columns that exist
+        .map(id => columnsById[id])
+      
+      // Add any new columns that might not be in the saved order
+      columns.forEach(col => {
+        if (!columnOrder.includes(col.id)) {
+          ordered.push(col)
+        }
+      })
+      
+      return ordered
+    }
+    
+    // Otherwise just use the columns in their default order
+    return [...columns]
+  }, [columns, columnsById, columnOrder])
   const [sortColumnId, setSortColumnId] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>(null)
   
@@ -227,19 +300,51 @@ export default function PositionsTable({ positions, midPrices = {} }: PositionsT
     }
   }
   
+  // Simple drag start handler
+  const handleDragStart = useCallback(() => {
+    console.log({
+      event: 'column_drag_started',
+      timestamp: new Date().toISOString()
+    })
+  }, [])
+  
   // Handle drag end event for column reordering
   const handleDragEnd = useCallback((event: DragEndEvent) => {
+    console.log({
+      event: 'column_drag_ended',
+      timestamp: new Date().toISOString()
+    })
+    
     const { active, over } = event
     
     if (over && active.id !== over.id) {
-      setColumns((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id)
-        const newIndex = items.findIndex((item) => item.id === over.id)
+      // Find the indexes in the current order
+      const oldIndex = orderedColumns.findIndex((item) => item.id === active.id)
+      const newIndex = orderedColumns.findIndex((item) => item.id === over.id)
+      
+      if (oldIndex !== -1 && newIndex !== -1) {
+        // Create the new ordered column list
+        const newOrderedColumns = arrayMove([...orderedColumns], oldIndex, newIndex)
         
-        return arrayMove(items, oldIndex, newIndex)
-      })
+        // Extract just the IDs for parent storage
+        const newColumnOrder = newOrderedColumns.map(col => col.id)
+        
+        // Log the column order change
+        console.log({
+          event: 'column_order_changed',
+          timestamp: new Date().toISOString(),
+          from_index: oldIndex,
+          to_index: newIndex,
+          column_id: active.id
+        })
+        
+        // Notify parent component if callback provided
+        if (onColumnOrderChange) {
+          onColumnOrderChange(newColumnOrder)
+        }
+      }
     }
-  }, [])
+  }, [orderedColumns, onColumnOrderChange])
 
   // Sort the positions based on current sort settings
   const getSortedPositions = () => {
@@ -247,7 +352,7 @@ export default function PositionsTable({ positions, midPrices = {} }: PositionsT
       return positions != null ? positions : []
     }
     
-    const column = columns.find(col => col.id === sortColumnId);
+    const column = orderedColumns.find(col => col.id === sortColumnId);
     if (!column) return positions;
     
     return [...positions].sort((a, b) => {
@@ -285,13 +390,14 @@ export default function PositionsTable({ positions, midPrices = {} }: PositionsT
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
         <Table>
           <Table.Header>
             <tr>
-              <SortableContext items={columns.map(col => col.id)} strategy={horizontalListSortingStrategy}>
-                {columns.map((column, index) => (
+              <SortableContext items={orderedColumns.map(col => col.id)} strategy={horizontalListSortingStrategy}>
+                {orderedColumns.map((column, index) => (
                   <React.Fragment key={column.id}>
                     <SortableColumnHeader
                       id={column.id}
@@ -299,7 +405,7 @@ export default function PositionsTable({ positions, midPrices = {} }: PositionsT
                       onClick={() => handleSort(column.id)}
                       sortActive={sortColumnId === column.id}
                       sortDirection={sortColumnId === column.id ? sortDirection : null}
-                      className={index < columns.length - 1 ? 'border-r border-gray-300' : ''}
+                      className={index < orderedColumns.length - 1 ? 'border-r border-gray-300' : ''}
                     />
                   </React.Fragment>
                 ))}
@@ -309,7 +415,7 @@ export default function PositionsTable({ positions, midPrices = {} }: PositionsT
           <Table.Body>
             {getSortedPositions().map((position: AssetPosition, index: number) => (
               <Table.Row key={position.position.coin} isEven={index % 2 === 0}>
-                {columns.map(column => (
+                {orderedColumns.map(column => (
                   <React.Fragment key={column.id}>
                     {/* For custom cell rendering with colors */}
                     {column.id === 'unrealizedPnl' || column.id === 'returnOnEquity' ? (

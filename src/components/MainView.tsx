@@ -10,12 +10,24 @@ import type { AccountState, AssetPosition } from '../types/hyperliquidTypes'
 import { Card, Loader, Message } from '@/components/ui'
 import { formatFiat, formatNumber, formatPercent } from '@/utils/formatters'
 
+// Define type for column order to be shared with PositionsTable
+export type ColumnConfig = {
+  id: string
+  label: string
+  getValue: (position: any) => any
+  renderCell: (position: any) => React.ReactNode
+}
+
 export default function MainView() {
   const { account } = useWallet()
   const [accountState, setAccountState] = useState<AccountState>()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string>()
   const [midPrices, setMidPrices] = useState<Record<string, string>>({})
+  const [hasMidPrices, setHasMidPrices] = useState(false)
+  
+  // Store column ordering to persist across renders
+  const [columnOrder, setColumnOrder] = useState<string[]>([])
 
   useAsyncEffect(
     async () => {
@@ -31,12 +43,37 @@ export default function MainView() {
       // Subscribe to mark prices
       try {
         const unsubscribeMidPrices = await subscribeToMidPrices((prices) => {
-          // Update mark prices state
-          setMidPrices(prices)
+          // Check if we have real price data
+          if (Object.keys(prices).length > 0) {
+            // Get BTC price at component update time
+            const btcPrice = prices['BTC'] || 'unavailable'
+            
+            console.log({
+              event: 'mid_prices_component_update',
+              timestamp: new Date().toISOString(),
+              btc_price: btcPrice
+            })
+            
+            // Create a fresh object to ensure React detects the state change
+            const freshPrices = Object.assign({}, prices)
+            
+            // Update the UI state with the new prices
+            setMidPrices(freshPrices)
+            
+            // Increment the key to force PositionsTable to completely re-render
+            // setMidPricesKey(prev => prev + 1)
+            
+            // Set flag indicating we have mid prices
+            setHasMidPrices(true)
+          }
         })
         cleanupFunctions.push(unsubscribeMidPrices)
       } catch (error) {
-        console.error('Error subscribing to mark prices:', error)
+        console.log({
+          event: 'mid_prices_subscription_error',
+          timestamp: new Date().toISOString(),
+          error: error instanceof Error ? error.message : 'Unknown error'
+        })
       }
       
       try {
@@ -224,7 +261,30 @@ export default function MainView() {
       {accountState != null && isLoading === false && (
         <div className="space-y-4">
           <AccountSummary accountState={accountState} />
-          <PositionsTable positions={accountState.assetPositions} midPrices={midPrices} />
+          {hasMidPrices ? (
+            <PositionsTable 
+              positions={accountState.assetPositions} 
+              midPrices={midPrices}
+              columnOrder={columnOrder}
+              onColumnOrderChange={(newOrder) => {
+                console.log({
+                  event: 'column_order_saved',
+                  timestamp: new Date().toISOString(),
+                  column_count: newOrder.length
+                })
+                setColumnOrder(newOrder)
+              }}
+            />
+          ) : (
+            <div className="mt-6">
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <div className="animate-pulse h-2 w-2 rounded-full bg-blue-500"></div>
+                  <p className="text-sm text-gray-600">Loading market prices...</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
       
