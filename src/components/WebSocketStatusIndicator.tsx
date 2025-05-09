@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect, useState } from 'react'
-import { WebSocketStatus, onWebSocketStatusChange, initializeWebSocket } from '@/services/hyperliquidService'
+import { WebSocketStatus, onWebSocketStatusChange, initializeWebSocket, onWebSocketMessage } from '@/services/hyperliquidService'
 
 export default function WebSocketStatusIndicator() {
   const [status, setStatus] = useState<WebSocketStatus>('disconnected')
+  const [isPulsing, setIsPulsing] = useState(false)
   
   useEffect(() => {
     // Initialize WebSocket connection when component mounts
@@ -13,18 +14,49 @@ export default function WebSocketStatusIndicator() {
     })
     
     // Subscribe to status changes
-    const unsubscribe = onWebSocketStatusChange((newStatus) => {
+    const statusUnsubscribe = onWebSocketStatusChange((newStatus) => {
       setStatus(newStatus)
     })
     
-    // Cleanup on unmount
     return () => {
-      unsubscribe()
+      statusUnsubscribe()
     }
-  }, [])
+  }, []) // Only run once on mount
   
-  // Determine indicator color based on status
+  // Separate effect for message pulse animation
+  useEffect(() => {
+    // Subscribe to message events to trigger pulse animation
+    const messageUnsubscribe = onWebSocketMessage(() => {
+      // Only pulse if we're connected
+      if (status === 'connected') {
+        // Prevent multiple pulse animations overlapping
+        setIsPulsing(false)  // Reset first to ensure animation retriggers
+        
+        // Use requestAnimationFrame to ensure the false state is processed
+        requestAnimationFrame(() => {
+          setIsPulsing(true)  // Start the pulse
+          
+          // Reset after animation completes
+          setTimeout(() => {
+            setIsPulsing(false)
+          }, 300)  // Quick pulse duration (300ms)
+        })
+      }
+    })
+    
+    return () => {
+      messageUnsubscribe()
+    }
+  }, [status])  // Re-subscribe when status changes
+  
+  // Determine indicator color based on status and pulsing state
   const getIndicatorColor = () => {
+    // Only use lighter green when connected and pulsing
+    if (status === 'connected' && isPulsing) {
+      return 'bg-green-200' // Even lighter green for pulse when receiving messages
+    }
+    
+    // Normal status colors
     switch (status) {
       case 'connected':
         return 'bg-green-500' // Green for connected
@@ -55,8 +87,11 @@ export default function WebSocketStatusIndicator() {
   
   return (
     <div className="flex items-center">
-      <div className="flex items-center space-x-1 mr-2">
-        <div className={`w-3 h-3 rounded-full ${getIndicatorColor()}`}></div>
+      {/* Fixed-size container to prevent layout shifts */}
+      <div className="flex items-center justify-center w-5 h-5 mr-2">
+        <div 
+          className={`rounded-full transition-all duration-500 ${getIndicatorColor()} ${isPulsing ? 'w-4 h-4' : 'w-3 h-3'}`}
+        ></div>
       </div>
       <span className="text-xs text-gray-600">{getStatusText()}</span>
     </div>

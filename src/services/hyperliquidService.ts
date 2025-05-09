@@ -30,6 +30,9 @@ export let websocketStatus: WebSocketStatus = 'disconnected'
 // Callback for status updates
 let statusChangeCallbacks: ((status: WebSocketStatus) => void)[] = []
 
+// Callbacks for message received
+let messageCallbacks: (() => void)[] = []
+
 /**
  * Fetches the user's state information including balance and positions from Hyperliquid API
  * @param address Ethereum address
@@ -335,6 +338,11 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
       // Define the message handler function
       const handleWebSocketMessage = (event: MessageEvent) => {
         try {
+          // Notify message received - simple pulse trigger
+          if (messageCallbacks.length > 0) {
+            messageCallbacks.forEach(callback => callback())
+          }
+          
           // Check if the message is a pong response
           if (event.data === 'pong') {
             console.log('WebSocket message received: pong')
@@ -480,6 +488,18 @@ export const onWebSocketStatusChange = (callback: (status: WebSocketStatus) => v
   // Return a function to unregister the callback
   return () => {
     statusChangeCallbacks = statusChangeCallbacks.filter(cb => cb !== callback)
+  }
+}
+
+/**
+ * Register a callback to be notified when a WebSocket message is received
+ * Used for UI indicators to show message activity
+ */
+export const onWebSocketMessage = (callback: () => void) => {
+  messageCallbacks.push(callback)
+  
+  return () => {
+    messageCallbacks = messageCallbacks.filter(cb => cb !== callback)
   }
 }
 
