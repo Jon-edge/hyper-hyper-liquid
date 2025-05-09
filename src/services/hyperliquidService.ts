@@ -1,7 +1,5 @@
 // Hyperliquid API service
 
-// WebSocket connection management
-let websocket: WebSocket | null = null
 import {
   AccountState,
   asFetchedClearinghouseState,
@@ -11,6 +9,11 @@ import {
   asAllMids,
   AllMids
 } from '../types/hyperliquidTypes'
+
+// WebSocket connection management
+let websocket: WebSocket | null = null
+let websocketConnecting = false // Flag to prevent multiple simultaneous connection attempts
+let connectionPromise: Promise<void> | null = null // Track the current connection promise
 
 // Track WebSocket subscriptions with their callbacks
 const websocketSubscriptions: Map<string, (data: unknown) => void> = new Map()
@@ -78,8 +81,21 @@ export const fetchClearinghouseState = async (address: string): Promise<FetchedC
  * Initialize the WebSocket connection to Hyperliquid
  */
 export const initializeWebSocket = (address?: string, onUpdate?: (accountState?: AccountState) => void): Promise<void> => {
-  return new Promise((resolve, reject) => {
+  // If we already have a connection promise in progress, return it
+  if (connectionPromise && websocketConnecting) {
+    console.log({
+      event: 'websocket_reuse',
+      timestamp: new Date().toISOString(),
+      message: 'Connection already in progress, reusing existing promise'
+    })
+    return connectionPromise
+  }
+  
+  // Create a new connection promise
+  connectionPromise = new Promise((resolve, reject) => {
     try {
+      // Set connecting flag to prevent multiple simultaneous connection attempts
+      websocketConnecting = true
       // Clear any existing reconnect timer
       if (reconnectTimer != null) {
         clearTimeout(reconnectTimer)
@@ -141,10 +157,16 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
       
       websocket.onopen = () => {
         clearTimeout(connectionTimeout)
-        console.log('WebSocket connection established')
+        console.log({
+          event: 'websocket_open',
+          timestamp: new Date().toISOString(),
+          message: 'Connection established'
+        })
         updateWebSocketStatus('connected')
         reconnectAttempts = 0
         lastPongReceived = Date.now()
+        // Reset connecting flag now that we're connected
+        websocketConnecting = false
         
         // Send an initial ping immediately to test the connection
         try {
@@ -321,7 +343,7 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
         clearTimeout(connectionTimeout)
         
         // Clear ping interval and health check
-          if (pingInterval != null) {
+        if (pingInterval != null) {
           clearInterval(pingInterval)
           pingInterval = null
         }
@@ -331,8 +353,17 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
           connectionHealthCheckInterval = null
         }
         
+        // Reset connection state variables to allow future connection attempts
+        websocketConnecting = false
+        connectionPromise = null
+        
         // Log more details about the close event
-        console.log(`WebSocket connection closed: ${event.code} ${event.reason || 'No reason provided'}`)
+        console.log({
+          event: 'websocket_close',
+          timestamp: new Date().toISOString(),
+          code: event.code,
+          reason: event.reason || 'No reason provided'
+        })
         
         // Handle specific close codes
         if (event.code === 1006) {
@@ -367,8 +398,14 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
       }
       
       websocket.onerror = (error) => {
-        console.error('WebSocket error:', error)
+        console.log({
+          event: 'websocket_error',
+          timestamp: new Date().toISOString(),
+          error: 'Connection error'
+        })
         updateWebSocketStatus('error')
+        // Reset connecting flag to allow future connection attempts
+        websocketConnecting = false
         // Don't reject here, let onclose handle reconnection
       }
       
@@ -476,11 +513,21 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
       // Assign the message handler to the websocket
       websocket.onmessage = handleWebSocketMessage
     } catch (error) {
-      console.error('Error initializing WebSocket:', error)
+      console.log({
+        event: 'websocket_init_error',
+        timestamp: new Date().toISOString(),
+        error: 'Failed to initialize WebSocket'
+      })
       updateWebSocketStatus('error')
+      // Reset connection state to allow future attempts
+      websocketConnecting = false
+      connectionPromise = null
       reject(error)
     }
   })
+  
+  // Return the connection promise
+  return connectionPromise
 }
 
 /**
