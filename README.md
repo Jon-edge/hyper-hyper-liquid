@@ -1,10 +1,66 @@
-Enhanced Hyperliquid trading interface
+# Hyper-Hyperliquid: Enhanced Trading Interface
 
-Demo: https://hyper-hyper-liquid.vercel.app/
+A modern, feature-rich trading interface for the Hyperliquid protocol, designed for improved usability and real-time data visualization.
+
+## Demo
+
+[Live Demo](https://hyper-hyper-liquid.vercel.app/)
+
+![Trading Interface Screenshot](https://github.com/user-attachments/assets/21e15f08-89b1-4142-800a-6bebfba0ab71)
+
+## Features
+
+### Account Management
+- **MetaMask Integration**: Seamless wallet connection and authentication
+- **Privacy Controls**: Toggle visibility of sensitive account information with eye icon
+- **Real-time Account Metrics**:
+  - Account Value
+  - Withdrawable Balance
+  - Total Unrealized PNL
+  - Cross Account Leverage
+  - Cross Margin Ratio
+  - Total Notional Position
+
+### Interface
+- **Live Position Tracking**: Real-time updates of all open positions
+- **Dynamic Mid Price Updates**: Live market data without interrupting user interactions
+- **Customizable Position Table**:
+  - Drag-and-drop column reordering
+  - Persistent column ordering across sessions
+  - Comprehensive position metrics (size, value, PNL, etc.)
+
+### Technical Features
+- **WebSocket Integration**: Real-time data streaming with robust connection handling
+- **Responsive Design**: Optimized for both desktop and (soon) mobile viewing
+- **Structured Logging**: Comprehensive event tracking with timestamps for debugging
+
+### Roadmap
+
+- Order interface
+- Order History
+- Order alerts (email, telegram)
+- Chart
+- Execute on Tradingview Signals
+- Add mobile support
 
 ## Getting Started
 
-First, run the development server:
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/Jon-edge/hyper-hyper-liquid.git
+cd hyper-hyperliquid
+
+# Install dependencies
+npm install
+# or
+yarn install
+```
+
+### Development
+
+Run the development server:
 
 ```bash
 npm run dev
@@ -18,15 +74,20 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Technology Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Frontend**: Next.js with TypeScript
+- **Styling**: Tailwind CSS with custom theme system
+- **State Management**: React Context API
+- **Data Fetching**: WebSocket API for real-time updates
+- **Wallet Integration**: MetaMask via ethers.js
 
-## Learn More
+## Contributing
 
-To learn more about Next.js, take a look at the following resources:
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
