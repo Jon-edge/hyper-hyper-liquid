@@ -253,12 +253,40 @@ export default function PositionsTable({
     {
       id: 'funding',
       label: 'FUNDING',
-      getValue: (position) => parseFloat(position.position.cumFunding?.allTime || '0'),
-      renderCell: (position) => <>
-        {position.position.cumFunding?.allTime 
-          ? formatFiat(position.position.cumFunding.allTime) 
-          : formatFiat(0)}
-      </>
+      getValue: (position) => parseFloat(position.position.cumFunding?.sinceChange || '0'),
+      renderCell: (position) => {
+        const allTime = position.position.cumFunding?.allTime || '0';
+        const sinceOpen = position.position.cumFunding?.sinceOpen || '0';
+        const sinceChange = position.position.cumFunding?.sinceChange || '0';
+        
+        // Determine if values are positive or negative for color styling
+        const sinceChangeNum = parseFloat(sinceChange);
+        const sinceOpenNum = parseFloat(sinceOpen);
+        const allTimeNum = parseFloat(allTime);
+        
+        // For funding, positive values (you pay funding) should be red, negative (you receive funding) should be green
+        // This is opposite of normal PNL coloring because paying funding is bad, receiving is good
+        const changeColor = sinceChangeNum >= 0 ? 'text-red-600' : 'text-green-600';
+        const openColor = sinceOpenNum >= 0 ? 'text-red-600' : 'text-green-600';
+        const cumColor = allTimeNum >= 0 ? 'text-red-600' : 'text-green-600';
+        
+        return (
+          <div className="flex flex-col text-xs">
+            <div>
+              <span className="text-gray-500">change: </span>
+              <span className={changeColor}>{formatFiat(sinceChange, true, undefined, false, false)}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">open: </span>
+              <span className={openColor}>{formatFiat(sinceOpen, true, undefined, false, false)}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">cum: </span>
+              <span className={cumColor}>{formatFiat(allTime, true, undefined, false, false)}</span>
+            </div>
+          </div>
+        );
+      }
     }
   ], [midPrices]); // Recreate columns when midPrices changes
   
