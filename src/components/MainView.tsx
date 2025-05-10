@@ -2,9 +2,11 @@
 
 import { useState } from 'react'
 import { useWallet } from '@/context/WalletContext'
+import { PositionProvider } from '@/context/PositionContext'
 import { subscribeToUserState, subscribeToMidPrices } from '@/services/hyperliquidService'
 import AccountSummary from '@/components/AccountSummary'
 import PositionsTable from '@/components/PositionsTable'
+import ChartView from '@/components/ChartView'
 import { useAsyncEffect } from '@/hooks/useAsyncEffect'
 import type { AccountState, AssetPosition } from '../types/hyperliquidTypes'
 import { Card, Loader, Message } from '@/components/ui'
@@ -245,54 +247,72 @@ export default function MainView() {
   )
 
   return (
-    <Card>
-      <Card.Header>Account Overview</Card.Header>
-      
-      {isLoading && (
-        <Loader label="Loading account data..." />
-      )}
-      
-      {error != null && (
-        <Message variant="error">
-          {error}
-        </Message>
-      )}
-      
-      {accountState != null && isLoading === false && (
-        <div className="space-y-4">
-          <AccountSummary accountState={accountState} />
-          {hasMidPrices ? (
-            <PositionsTable 
-              positions={accountState.assetPositions} 
-              midPrices={midPrices}
-              columnOrder={columnOrder}
-              onColumnOrderChange={(newOrder) => {
-                console.log({
-                  event: 'column_order_saved',
-                  timestamp: new Date().toISOString(),
-                  column_count: newOrder.length
-                })
-                setColumnOrder(newOrder)
-              }}
-            />
-          ) : (
-            <div className="mt-6">
-              <div className="p-4 bg-gray-50 rounded-lg">
+    <PositionProvider>
+      <div className="space-y-6">
+        {/* Account Overview Card */}
+        <Card>
+          <Card.Header>Account Overview</Card.Header>
+          
+          {isLoading && (
+            <Loader label="Loading account data..." />
+          )}
+          
+          {error != null && (
+            <Message variant="error">
+              {error}
+            </Message>
+          )}
+          
+          {accountState != null && isLoading === false && (
+            <AccountSummary accountState={accountState} />
+          )}
+          
+          {account == null && (
+            <Message variant="warning">
+              <p>Please connect your wallet to view your account data.</p>
+            </Message>
+          )}
+        </Card>
+        
+        {/* Chart Card - Only show if account state is loaded */}
+        {accountState != null && isLoading === false && (
+          <Card>
+            <Card.Header>Chart</Card.Header>
+            <div className="h-[500px]">
+              <ChartView />
+            </div>
+          </Card>
+        )}
+        
+        {/* Positions Card - Only show if account state is loaded */}
+        {accountState != null && isLoading === false && (
+          <Card>
+            <Card.Header>Positions</Card.Header>
+            {hasMidPrices ? (
+              <PositionsTable 
+                positions={accountState.assetPositions} 
+                midPrices={midPrices}
+                columnOrder={columnOrder}
+                onColumnOrderChange={(newOrder) => {
+                  console.log({
+                    event: 'column_order_saved',
+                    timestamp: new Date().toISOString(),
+                    column_count: newOrder.length
+                  })
+                  setColumnOrder(newOrder)
+                }}
+              />
+            ) : (
+              <div className="p-4">
                 <div className="flex items-center space-x-3">
                   <div className="animate-pulse h-2 w-2 rounded-full bg-blue-500"></div>
                   <p className="text-sm text-gray-600">Loading market prices...</p>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
-      
-      {account == null && (
-        <Message variant="warning">
-          <p>Please connect your wallet to view your account data.</p>
-        </Message>
-      )}
-    </Card>
+            )}
+          </Card>
+        )}
+      </div>
+    </PositionProvider>
   )
 }

@@ -1,4 +1,6 @@
-# Hyper-Hyperliquid: Enhanced Trading Interface
+<h2 align="center">⚠️ 👷🏻 THIS IS A WORK IN PROGRESS! 🚧 ⚠️</h2>
+
+## Hyper-Hyperliquid: Enhanced Trading Interface
 
 A modern, feature-rich trading interface for the Hyperliquid protocol, designed for improved usability and real-time data visualization.
 
@@ -6,7 +8,7 @@ A modern, feature-rich trading interface for the Hyperliquid protocol, designed 
 
 [Live Demo](https://hyper-hyper-liquid.vercel.app/)
 
-![Trading Interface Screenshot](https://github.com/user-attachments/assets/21e15f08-89b1-4142-800a-6bebfba0ab71)
+![Trading Interface Screenshot](https://github.com/user-attachments/assets/d16b2978-6cad-446d-bc73-a371731dec64)
 
 ## Features
 
@@ -23,6 +25,7 @@ A modern, feature-rich trading interface for the Hyperliquid protocol, designed 
 
 ### Interface
 - **Live Position Tracking**: Real-time updates of all open positions
+- **Connection Status**: Display connection status, reconnection attempts, and received data ticks
 - **Dynamic Mid Price Updates**: Live market data without interrupting user interactions
 - **Customizable Position Table**:
   - Drag-and-drop column reordering
@@ -39,7 +42,8 @@ A modern, feature-rich trading interface for the Hyperliquid protocol, designed 
 - Order interface
 - Order History
 - Order alerts (email, telegram)
-- Chart
+- Chart based on Hyperliquid candle data
+- Positions and orders on chart
 - Execute on Tradingview Signals
 - Add mobile support
 

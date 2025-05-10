@@ -97,17 +97,23 @@ Table.Body = function TableBody({
 Table.Row = function TableRow({
   children,
   isEven = true,
-  className
+  className,
+  onClick
 }: {
   children: ReactNode
   isEven?: boolean
   className?: string
+  onClick?: () => void
 }) {
   return (
-    <tr className={cx(
-      isEven ? theme.table.body.row.even : theme.table.body.row.odd,
-      className
-    )}>
+    <tr 
+      className={cx(
+        isEven ? theme.table.body.row.even : theme.table.body.row.odd,
+        onClick ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50' : '',
+        className
+      )}
+      onClick={onClick}
+    >
       {children}
     </tr>
   )

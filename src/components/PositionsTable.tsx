@@ -5,6 +5,7 @@ import { AssetPosition, FetchedClearinghouseState } from '../types/hyperliquidTy
 import { Table, Panel } from '@/components/ui'
 import { formatNumber, formatFiat, formatPercent } from '@/utils/formatters'
 import { useWallet } from '@/context/WalletContext'
+import { usePosition } from '@/context/PositionContext'
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, horizontalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -110,6 +111,24 @@ export default function PositionsTable({
 }: PositionsTableProps) {
   // Access the hideInfo state from WalletContext
   const { hideInfo } = useWallet()
+  // Access the position context for chart integration
+  const { selectedPosition, setSelectedPosition } = usePosition()
+  
+  // Handle row click to select a position for the chart
+  const handleRowClick = useCallback((position: AssetPosition) => {
+    // Toggle selection: if clicking the same position, deselect it
+    if (selectedPosition && selectedPosition.position.coin === position.position.coin) {
+      setSelectedPosition(null)
+    } else {
+      setSelectedPosition(position)
+    }
+    
+    console.log({
+      event: 'position_selected',
+      timestamp: new Date().toISOString(),
+      coin: position.position.coin
+    })
+  }, [selectedPosition, setSelectedPosition])
   
   // Define column configuration as a single source of truth - now using useMemo to recreate when midPrices changes
   const columns = React.useMemo<ColumnConfig[]>(() => [
@@ -388,8 +407,7 @@ export default function PositionsTable({
   }
 
   return (
-    <div className="mt-6">
-      <h3 className="text-lg font-semibold mb-3 text-gray-900">Positions</h3>
+    <div>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -416,22 +434,32 @@ export default function PositionsTable({
             </tr>
           </Table.Header>
           <Table.Body>
-            {getSortedPositions().map((position: AssetPosition, index: number) => (
-              <Table.Row key={position.position.coin} isEven={index % 2 === 0}>
-                {orderedColumns.map(column => (
-                  <React.Fragment key={column.id}>
-                    {/* For custom cell rendering with colors */}
-                    {column.id === 'unrealizedPnl' || column.id === 'returnOnEquity' ? (
-                      column.renderCell(position)
-                    ) : (
-                      <Table.Cell secondary>
-                        {column.renderCell(position)}
-                      </Table.Cell>
-                    )}
-                  </React.Fragment>
-                ))}
-              </Table.Row>
-            ))}
+            {getSortedPositions().map((position: AssetPosition, index: number) => {
+              // Check if this position is the selected one
+              const isSelected = selectedPosition && selectedPosition.position.coin === position.position.coin
+              
+              return (
+                <Table.Row 
+                  key={position.position.coin} 
+                  isEven={index % 2 === 0}
+                  onClick={() => handleRowClick(position)}
+                  className={isSelected ? 'bg-blue-50 dark:bg-blue-900/20 transition-colors' : 'transition-colors'}
+                >
+                  {orderedColumns.map(column => (
+                    <React.Fragment key={column.id}>
+                      {/* For custom cell rendering with colors */}
+                      {column.id === 'unrealizedPnl' || column.id === 'returnOnEquity' ? (
+                        column.renderCell(position)
+                      ) : (
+                        <Table.Cell secondary>
+                          {column.renderCell(position)}
+                        </Table.Cell>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </Table.Row>
+              )
+            })}
           </Table.Body>
         </Table>
       </DndContext>
