@@ -1,8 +1,9 @@
 "use client"
 
-import React, { ReactNode, useState, useCallback } from 'react'
+import React, { ReactNode, useState, useCallback, useMemo, useEffect } from 'react'
 import { AssetPosition, FetchedClearinghouseState } from '../types/hyperliquidTypes'
 import { Table, Panel } from '@/components/ui'
+import { Modal } from '@/components/ui/Modal'
 import { formatNumber, formatFiat, formatPercent } from '@/utils/formatters'
 import { useWallet } from '@/context/WalletContext'
 import { usePosition } from '@/context/PositionContext'
@@ -25,6 +26,8 @@ interface PositionsTableProps {
   midPrices: Record<string, string>
   columnOrder?: string[] // Array of column IDs in their current order
   onColumnOrderChange?: (columnOrder: string[]) => void // Callback to update column order in parent
+  visibleColumns?: string[] // Array of visible column IDs
+  onVisibleColumnsChange?: (visibleColumns: string[]) => void // Callback to update visible columns in parent
 }
 
 // Sortable column header component
@@ -107,29 +110,21 @@ export default function PositionsTable({
   positions, 
   midPrices, 
   columnOrder = [], 
-  onColumnOrderChange 
+  onColumnOrderChange,
+  visibleColumns = [],
+  onVisibleColumnsChange
 }: PositionsTableProps) {
   // Access the hideInfo state from WalletContext
   const { hideInfo } = useWallet()
   // Access the position context for chart integration
   const { selectedPosition, setSelectedPosition } = usePosition()
   
-  // Handle row click to select a position for the chart
-  const handleRowClick = useCallback((position: AssetPosition) => {
-    // Toggle selection: if clicking the same position, deselect it
-    if (selectedPosition && selectedPosition.position.coin === position.position.coin) {
-      setSelectedPosition(null)
-    } else {
-      setSelectedPosition(position)
-    }
-    
-    console.log({
-      event: 'position_selected',
-      timestamp: new Date().toISOString(),
-      coin: position.position.coin
-    })
-  }, [selectedPosition, setSelectedPosition])
-  
+  // State for column visibility modal
+  const [isColumnModalOpen, setIsColumnModalOpen] = useState(false)
+  // State for tracking which columns are visible
+  const [localVisibleColumns, setLocalVisibleColumns] = useState<string[]>(
+    visibleColumns.length > 0 ? visibleColumns : []
+  )
   // Define column configuration as a single source of truth - now using useMemo to recreate when midPrices changes
   const columns = React.useMemo<ColumnConfig[]>(() => [
     {
@@ -290,6 +285,59 @@ export default function PositionsTable({
     }
   ], [midPrices]); // Recreate columns when midPrices changes
   
+  // Handle row click to select a position for the chart
+  const handleRowClick = useCallback((position: AssetPosition) => {
+    // Toggle selection: if clicking the same position, deselect it
+    if (selectedPosition && selectedPosition.position.coin === position.position.coin) {
+      setSelectedPosition(null)
+    } else {
+      setSelectedPosition(position)
+    }
+    
+    console.log({
+      event: 'position_selected',
+      timestamp: new Date().toISOString(),
+      coin: position.position.coin
+    })
+  }, [selectedPosition, setSelectedPosition])
+
+  // Initialize visible columns if empty
+  useEffect(() => {
+    if (localVisibleColumns.length === 0 && columns.length > 0) {
+      // Default to all columns visible
+      const defaultVisibleColumns = columns.map(col => col.id)
+      setLocalVisibleColumns(defaultVisibleColumns)
+      if (onVisibleColumnsChange) {
+        onVisibleColumnsChange(defaultVisibleColumns)
+      }
+    }
+  }, [columns, localVisibleColumns.length, onVisibleColumnsChange])
+  
+  // Handle toggling column visibility
+  const handleToggleColumn = useCallback((columnId: string) => {
+    setLocalVisibleColumns(prev => {
+      // If column is currently visible, remove it
+      if (prev.includes(columnId)) {
+        const newVisibleColumns = prev.filter(id => id !== columnId)
+        // Ensure at least one column remains visible
+        if (newVisibleColumns.length === 0) {
+          return prev
+        }
+        return newVisibleColumns
+      } 
+      // Otherwise add it
+      return [...prev, columnId]
+    })
+  }, [])
+  
+  // Save column visibility changes
+  const handleSaveColumnVisibility = useCallback(() => {
+    if (onVisibleColumnsChange) {
+      onVisibleColumnsChange(localVisibleColumns)
+    }
+    setIsColumnModalOpen(false)
+  }, [localVisibleColumns, onVisibleColumnsChange])
+  
   // Get a map of column configs by ID for easy lookup
   const columnsById = React.useMemo(() => {
     return columns.reduce((acc, column) => {
@@ -298,28 +346,42 @@ export default function PositionsTable({
     }, {} as Record<string, ColumnConfig>)
   }, [columns])
   
-  // Create orderedColumns based on either props.columnOrder or default order
-  const orderedColumns = React.useMemo(() => {
-    // If we have a column order from props, use it to order the columns
-    if (columnOrder && columnOrder.length > 0) {
-      // Create ordered columns array based on saved order
-      const ordered = columnOrder
-        .filter(id => columnsById[id]) // Only include columns that exist
+  // Get ordered columns based on columnOrder prop
+  const [orderedColumns, setOrderedColumns] = useState<ColumnConfig[]>([]);
+  
+  // Initialize ordered columns
+  useEffect(() => {
+    if (columnOrder.length > 0) {
+      // Use the provided column order
+      const newOrderedColumns = columnOrder
         .map(id => columnsById[id])
-      
-      // Add any new columns that might not be in the saved order
-      columns.forEach(col => {
-        if (!columnOrder.includes(col.id)) {
-          ordered.push(col)
-        }
-      })
-      
-      return ordered
+        .filter(Boolean); // Filter out any undefined columns
+      setOrderedColumns(newOrderedColumns);
+    } else {
+      // Default to the original order
+      setOrderedColumns(columns);
     }
-    
-    // Otherwise just use the columns in their default order
-    return [...columns]
-  }, [columns, columnsById, columnOrder])
+  }, [columns, columnOrder, columnsById]);
+  
+  // Filter columns based on visibility, but always include the coin column
+  const visibleOrderedColumns = React.useMemo(() => {
+    return orderedColumns.filter(column => 
+      column.id === 'coin' || localVisibleColumns.includes(column.id)
+    )
+  }, [orderedColumns, localVisibleColumns]);
+  
+  // Add any missing columns that might not be in the saved order
+  useEffect(() => {
+    if (orderedColumns.length > 0) {
+      const missingColumns = columns.filter(col => 
+        !orderedColumns.some(orderedCol => orderedCol.id === col.id)
+      );
+      
+      if (missingColumns.length > 0) {
+        setOrderedColumns(prev => [...prev, ...missingColumns]);
+      }
+    }
+  }, [columns, orderedColumns])
   const [sortColumnId, setSortColumnId] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>(null)
   
@@ -434,8 +496,91 @@ export default function PositionsTable({
     )
   }
 
+  // Handle select all columns
+  const handleSelectAll = useCallback(() => {
+    // Get all column IDs including coin
+    const allColumnIds = orderedColumns.map(col => col.id);
+    setLocalVisibleColumns(allColumnIds);
+  }, [orderedColumns]);
+  
+  // Handle select none (deselect all columns except coin)
+  const handleSelectNone = useCallback(() => {
+    // Always keep coin column visible
+    setLocalVisibleColumns(['coin']);
+  }, []);
+
+  // Column visibility modal
+  const renderColumnVisibilityModal = () => {
+    return (
+      <Modal
+        isOpen={isColumnModalOpen}
+        onClose={() => setIsColumnModalOpen(false)}
+        title="Column Visibility"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Select which columns to display in the positions table.
+          </p>
+          
+          {/* Select All/None buttons */}
+          <div className="flex space-x-2">
+            <button
+              onClick={handleSelectAll}
+              className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              Select All
+            </button>
+            <button
+              onClick={handleSelectNone}
+              className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              Select None
+            </button>
+          </div>
+          
+          <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+            {orderedColumns
+              .filter(column => column.id !== 'coin') // Exclude coin column from options
+              .map(column => (
+                <div key={column.id} className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id={`column-${column.id}`}
+                    checked={localVisibleColumns.includes(column.id)}
+                    onChange={() => handleToggleColumn(column.id)}
+                    className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                  />
+                  <label htmlFor={`column-${column.id}`} className="ml-2 text-sm text-gray-700">
+                    {column.label}
+                  </label>
+                </div>
+              ))
+            }
+          </div>
+          <div className="flex justify-end space-x-2 pt-4 border-t border-gray-200">
+            <button
+              onClick={() => setIsColumnModalOpen(false)}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveColumnVisibility}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
+  };
+
   return (
     <div>
+      {renderColumnVisibilityModal()}
+      
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -445,8 +590,8 @@ export default function PositionsTable({
         <Table>
           <Table.Header>
             <tr>
-              <SortableContext items={orderedColumns.map(col => col.id)} strategy={horizontalListSortingStrategy}>
-                {orderedColumns.map((column, index) => (
+              <SortableContext items={visibleOrderedColumns.map(col => col.id)} strategy={horizontalListSortingStrategy}>
+                {visibleOrderedColumns.map((column, index) => (
                   <React.Fragment key={column.id}>
                     <SortableColumnHeader
                       id={column.id}
@@ -454,10 +599,21 @@ export default function PositionsTable({
                       onClick={() => handleSort(column.id)}
                       sortActive={sortColumnId === column.id}
                       sortDirection={sortColumnId === column.id ? sortDirection : null}
-                      className={index < orderedColumns.length - 1 ? 'border-r border-gray-300' : ''}
+                      className={index < visibleOrderedColumns.length - 1 ? 'border-r border-gray-300' : ''}
                     />
                   </React.Fragment>
                 ))}
+                <th className="px-2 py-2 bg-gray-100 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <button
+                    onClick={() => setIsColumnModalOpen(true)}
+                    className="flex items-center p-1 text-gray-600 hover:text-blue-600 focus:outline-none"
+                    title="Edit columns"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                </th>
               </SortableContext>
             </tr>
           </Table.Header>
@@ -473,7 +629,7 @@ export default function PositionsTable({
                   onClick={() => handleRowClick(position)}
                   className={isSelected ? 'bg-blue-50 dark:bg-blue-900/20 transition-colors' : 'transition-colors'}
                 >
-                  {orderedColumns.map(column => (
+                  {visibleOrderedColumns.map(column => (
                     <React.Fragment key={column.id}>
                       {/* For custom cell rendering with colors */}
                       {column.id === 'unrealizedPnl' || column.id === 'returnOnEquity' ? (
@@ -485,6 +641,8 @@ export default function PositionsTable({
                       )}
                     </React.Fragment>
                   ))}
+                  {/* Empty cell to match the column settings button */}
+                  <td></td>
                 </Table.Row>
               )
             })}
