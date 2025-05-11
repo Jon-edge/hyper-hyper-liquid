@@ -98,7 +98,7 @@ export const baseStyles = {
       col: 'flex flex-col',
     },
   },
-};
+}
 
 // Composite styles built from base styles
 export const compositeStyles = {
@@ -183,10 +183,10 @@ export const compositeStyles = {
       },
     },
   },
-};
+}
 
 // Export the theme object for backward compatibility
-export const theme = compositeStyles;
+export const theme = compositeStyles
 
 // Helper for combining multiple theme classes
 export const cx = (...classes: (string | undefined | null | false)[]): string => {

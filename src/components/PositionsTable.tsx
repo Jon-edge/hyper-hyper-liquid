@@ -1,6 +1,6 @@
 "use client"
 
-import React, { ReactNode, useState, useCallback, useMemo, useEffect } from 'react'
+import React, { ReactNode, useState, useCallback, useEffect } from 'react'
 import { AssetPosition, FetchedClearinghouseState } from '../types/hyperliquidTypes'
 import { Table, Panel } from '@/components/ui'
 import { Modal } from '@/components/ui/Modal'
@@ -125,6 +125,10 @@ export default function PositionsTable({
   const [localVisibleColumns, setLocalVisibleColumns] = useState<string[]>(
     visibleColumns.length > 0 ? visibleColumns : []
   )
+  
+  // Get ordered columns based on columnOrder prop
+  const [orderedColumns, setOrderedColumns] = useState<ColumnConfig[]>([])
+  
   // Define column configuration as a single source of truth - now using useMemo to recreate when midPrices changes
   const columns = React.useMemo<ColumnConfig[]>(() => [
     {
@@ -136,8 +140,8 @@ export default function PositionsTable({
     {
       id: 'leverage',
       label: 'LEV',
-      getValue: (position) => position.position.leverage?.value || 1,
-      renderCell: (position) => <>{position.position.leverage?.value ? `${position.position.leverage.value}x` : '1x'}</>
+      getValue: (position) => position.position.leverage?.value ?? 1,
+      renderCell: (position) => <>{position.position.leverage?.value ?? 1}x</>
     },
     {
       id: 'size',
@@ -163,12 +167,12 @@ export default function PositionsTable({
       getValue: (position) => {
         const coin = position.position.coin
         const price = getMidPriceForCoin(coin, midPrices)
-        return price ? parseFloat(price) : 0
+        return price != null ? parseFloat(price) : 0
       },
       renderCell: (position) => {
         const coin = position.position.coin
         const price = getMidPriceForCoin(coin, midPrices)
-        if (!price) return <>-</>
+        if (price == null) return <>-</>
         
         // Calculate percentage difference from entry price
         const entryPrice = parseFloat(position.position.entryPx)
@@ -192,8 +196,8 @@ export default function PositionsTable({
       label: 'PNL',
       getValue: (position) => parseFloat(position.position.unrealizedPnl),
       renderCell: (position) => {
-        const pnl = parseFloat(position.position.unrealizedPnl);
-        const isPositive = pnl >= 0;
+        const pnl = parseFloat(position.position.unrealizedPnl)
+        const isPositive = pnl >= 0
         return (
           <Table.Cell 
             secondary
@@ -202,22 +206,22 @@ export default function PositionsTable({
           >
             {formatFiat(pnl, true, undefined, false, true, hideInfo)}
           </Table.Cell>
-        );
+        )
       }
     },
     {
       id: 'returnOnEquity',
       label: 'ROE %',
       getValue: (position) => {
-        const pnl = parseFloat(position.position.unrealizedPnl);
-        const margin = parseFloat(position.position.marginUsed);
-        return margin > 0 ? (pnl / margin) * 100 : 0;
+        const pnl = parseFloat(position.position.unrealizedPnl)
+        const margin = parseFloat(position.position.marginUsed)
+        return margin > 0 ? (pnl / margin) * 100 : 0
       },
       renderCell: (position) => {
-        const pnl = parseFloat(position.position.unrealizedPnl);
-        const margin = parseFloat(position.position.marginUsed);
-        const roe = margin > 0 ? (pnl / margin) * 100 : 0;
-        const isPositive = roe >= 0;
+        const pnl = parseFloat(position.position.unrealizedPnl)
+        const margin = parseFloat(position.position.marginUsed)
+        const roe = margin > 0 ? (pnl / margin) * 100 : 0
+        const isPositive = roe >= 0
         return (
           <Table.Cell 
             secondary
@@ -226,7 +230,7 @@ export default function PositionsTable({
           >
             {formatPercent(roe)}
           </Table.Cell>
-        );
+        )
       }
     },
     {
@@ -238,32 +242,28 @@ export default function PositionsTable({
     {
       id: 'liquidationPrice',
       label: 'LIQ PRICE',
-      getValue: (position) => parseFloat(position.position.liquidationPx || '0'),
-      renderCell: (position) => <>
-        {position.position.liquidationPx 
-          ? formatFiat(position.position.liquidationPx) 
-          : 'N/A'}
-      </>
+      getValue: (position) => parseFloat(position.position.liquidationPx ?? '0'),
+      renderCell: (position) => <>{formatFiat(position.position.liquidationPx ?? '0', true, undefined, false, true, hideInfo)}</>
     },
     {
       id: 'funding',
       label: 'FUNDING',
-      getValue: (position) => parseFloat(position.position.cumFunding?.sinceChange || '0'),
+      getValue: (position) => parseFloat(position.position.cumFunding?.sinceChange ?? '0'),
       renderCell: (position) => {
-        const allTime = position.position.cumFunding?.allTime || '0';
-        const sinceOpen = position.position.cumFunding?.sinceOpen || '0';
-        const sinceChange = position.position.cumFunding?.sinceChange || '0';
+        const allTime = position.position.cumFunding?.allTime ?? '0'
+        const sinceOpen = position.position.cumFunding?.sinceOpen ?? '0'
+        const sinceChange = position.position.cumFunding?.sinceChange ?? '0'
         
         // Determine if values are positive or negative for color styling
-        const sinceChangeNum = parseFloat(sinceChange);
-        const sinceOpenNum = parseFloat(sinceOpen);
-        const allTimeNum = parseFloat(allTime);
+        const sinceChangeNum = parseFloat(sinceChange)
+        const sinceOpenNum = parseFloat(sinceOpen)
+        const allTimeNum = parseFloat(allTime)
         
         // For funding, positive values (you pay funding) should be red, negative (you receive funding) should be green
         // This is opposite of normal PNL coloring because paying funding is bad, receiving is good
-        const changeColor = sinceChangeNum >= 0 ? 'text-red-600' : 'text-green-600';
-        const openColor = sinceOpenNum >= 0 ? 'text-red-600' : 'text-green-600';
-        const cumColor = allTimeNum >= 0 ? 'text-red-600' : 'text-green-600';
+        const changeColor = sinceChangeNum >= 0 ? 'text-red-600' : 'text-green-600'
+        const openColor = sinceOpenNum >= 0 ? 'text-red-600' : 'text-green-600'
+        const cumColor = allTimeNum >= 0 ? 'text-red-600' : 'text-green-600'
         
         return (
           <div className="flex flex-col text-xs">
@@ -280,15 +280,15 @@ export default function PositionsTable({
               <span className={cumColor}>{formatFiat(allTime, true, undefined, false, false)}</span>
             </div>
           </div>
-        );
+        )
       }
     }
-  ], [midPrices]); // Recreate columns when midPrices changes
+  ], [hideInfo, midPrices]) // Recreate columns when midPrices changes
   
   // Handle row click to select a position for the chart
   const handleRowClick = useCallback((position: AssetPosition) => {
     // Toggle selection: if clicking the same position, deselect it
-    if (selectedPosition && selectedPosition.position.coin === position.position.coin) {
+    if (selectedPosition != null && selectedPosition.position.coin === position.position.coin) {
       setSelectedPosition(null)
     } else {
       setSelectedPosition(position)
@@ -307,12 +307,26 @@ export default function PositionsTable({
       // Default to all columns visible
       const defaultVisibleColumns = columns.map(col => col.id)
       setLocalVisibleColumns(defaultVisibleColumns)
-      if (onVisibleColumnsChange) {
+      if (onVisibleColumnsChange != null) {
         onVisibleColumnsChange(defaultVisibleColumns)
       }
     }
   }, [columns, localVisibleColumns.length, onVisibleColumnsChange])
   
+
+  // Handle select all columns
+  const handleSelectAll = useCallback(() => {
+    // Get all column IDs including coin
+    const allColumnIds = orderedColumns.map(col => col.id)
+    setLocalVisibleColumns(allColumnIds)
+  }, [orderedColumns])
+  
+  // Handle select none (deselect all columns except coin)
+  const handleSelectNone = useCallback(() => {
+    // Always keep coin column visible
+    setLocalVisibleColumns(['coin'])
+  }, [])
+
   // Handle toggling column visibility
   const handleToggleColumn = useCallback((columnId: string) => {
     setLocalVisibleColumns(prev => {
@@ -332,7 +346,7 @@ export default function PositionsTable({
   
   // Save column visibility changes
   const handleSaveColumnVisibility = useCallback(() => {
-    if (onVisibleColumnsChange) {
+    if (onVisibleColumnsChange != null) {
       onVisibleColumnsChange(localVisibleColumns)
     }
     setIsColumnModalOpen(false)
@@ -346,39 +360,36 @@ export default function PositionsTable({
     }, {} as Record<string, ColumnConfig>)
   }, [columns])
   
-  // Get ordered columns based on columnOrder prop
-  const [orderedColumns, setOrderedColumns] = useState<ColumnConfig[]>([]);
-  
   // Initialize ordered columns
   useEffect(() => {
     if (columnOrder.length > 0) {
       // Use the provided column order
       const newOrderedColumns = columnOrder
         .map(id => columnsById[id])
-        .filter(Boolean); // Filter out any undefined columns
-      setOrderedColumns(newOrderedColumns);
+        .filter(Boolean) // Filter out any undefined columns
+      setOrderedColumns(newOrderedColumns)
     } else {
       // Default to the original order
-      setOrderedColumns(columns);
+      setOrderedColumns(columns)
     }
-  }, [columns, columnOrder, columnsById]);
+  }, [columns, columnOrder, columnsById])
   
   // Filter columns based on visibility, but always include the coin column
   const visibleOrderedColumns = React.useMemo(() => {
     return orderedColumns.filter(column => 
       column.id === 'coin' || localVisibleColumns.includes(column.id)
     )
-  }, [orderedColumns, localVisibleColumns]);
+  }, [orderedColumns, localVisibleColumns])
   
   // Add any missing columns that might not be in the saved order
   useEffect(() => {
     if (orderedColumns.length > 0) {
       const missingColumns = columns.filter(col => 
         !orderedColumns.some(orderedCol => orderedCol.id === col.id)
-      );
+      )
       
       if (missingColumns.length > 0) {
-        setOrderedColumns(prev => [...prev, ...missingColumns]);
+        setOrderedColumns(prev => [...prev, ...missingColumns])
       }
     }
   }, [columns, orderedColumns])
@@ -429,7 +440,7 @@ export default function PositionsTable({
     
     const { active, over } = event
     
-    if (over && active.id !== over.id) {
+    if (over != null && active.id !== over.id) {
       // Find the indexes in the current order
       const oldIndex = orderedColumns.findIndex((item) => item.id === active.id)
       const newIndex = orderedColumns.findIndex((item) => item.id === over.id)
@@ -451,7 +462,7 @@ export default function PositionsTable({
         })
         
         // Notify parent component if callback provided
-        if (onColumnOrderChange) {
+        if (onColumnOrderChange != null) {
           onColumnOrderChange(newColumnOrder)
         }
       }
@@ -464,13 +475,13 @@ export default function PositionsTable({
       return positions != null ? positions : []
     }
     
-    const column = orderedColumns.find(col => col.id === sortColumnId);
-    if (!column) return positions;
+    const column = orderedColumns.find(col => col.id === sortColumnId)
+    if (column == null) return positions
     
     return [...positions].sort((a, b) => {
       // Special case for string comparisons like coin names
-      const aValue = column.getValue(a);
-      const bValue = column.getValue(b);
+      const aValue = column.getValue(a)
+      const bValue = column.getValue(b)
       
       if (typeof aValue === 'string' && typeof bValue === 'string') {
         return sortDirection === 'asc' 
@@ -479,10 +490,10 @@ export default function PositionsTable({
       }
       
       // For numeric values
-      const aNum = Number(aValue);
-      const bNum = Number(bValue);
+      const aNum = Number(aValue)
+      const bNum = Number(bValue)
       
-      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+      return sortDirection === 'asc' ? aNum - bNum : bNum - aNum
     })
   }
 
@@ -495,19 +506,6 @@ export default function PositionsTable({
       </div>
     )
   }
-
-  // Handle select all columns
-  const handleSelectAll = useCallback(() => {
-    // Get all column IDs including coin
-    const allColumnIds = orderedColumns.map(col => col.id);
-    setLocalVisibleColumns(allColumnIds);
-  }, [orderedColumns]);
-  
-  // Handle select none (deselect all columns except coin)
-  const handleSelectNone = useCallback(() => {
-    // Always keep coin column visible
-    setLocalVisibleColumns(['coin']);
-  }, []);
 
   // Column visibility modal
   const renderColumnVisibilityModal = () => {
@@ -574,8 +572,8 @@ export default function PositionsTable({
           </div>
         </div>
       </Modal>
-    );
-  };
+    )
+  }
 
   return (
     <div>
@@ -620,7 +618,7 @@ export default function PositionsTable({
           <Table.Body>
             {getSortedPositions().map((position: AssetPosition, index: number) => {
               // Check if this position is the selected one
-              const isSelected = selectedPosition && selectedPosition.position.coin === position.position.coin
+              const isSelected = selectedPosition != null && selectedPosition.position.coin === position.position.coin
               
               return (
                 <Table.Row 

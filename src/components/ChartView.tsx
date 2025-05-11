@@ -10,7 +10,7 @@ const ChartView: React.FC = () => {
   
   return (
     <div className="w-full h-full">
-      {selectedPosition ? (
+      {selectedPosition != null ? (
         <TradingViewChart 
           symbol={selectedPosition.position.coin} 
           theme="dark"

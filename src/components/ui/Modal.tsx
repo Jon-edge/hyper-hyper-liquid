@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { theme, cx } from '@/styles/theme'
+import { cx } from '@/styles/theme'
 
 interface ModalProps {
   isOpen: boolean

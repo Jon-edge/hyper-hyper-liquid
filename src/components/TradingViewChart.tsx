@@ -21,7 +21,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
   
   useEffect(() => {
     // Clean up any existing widgets
-    if (containerRef.current) {
+    if (containerRef.current != null) {
       containerRef.current.innerHTML = ''
     }
     
@@ -39,7 +39,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
     script.src = 'https://s3.tradingview.com/tv.js'
     script.async = true
     script.onload = () => {
-      if (typeof window.TradingView !== 'undefined' && containerRef.current) {
+      if (window.TradingView != null && containerRef.current != null) {
         new window.TradingView.widget({
           autosize,
           symbol: formattedSymbol,
@@ -70,7 +70,7 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
     
     // Clean up
     return () => {
-      if (script.parentNode) {
+      if (script.parentNode != null) {
         script.parentNode.removeChild(script)
       }
     }
@@ -96,7 +96,9 @@ const TradingViewChart: React.FC<TradingViewChartProps> = ({
 // Add TradingView types to the Window interface
 declare global {
   interface Window {
-    TradingView: any
+    TradingView?: {
+      widget: new (config: unknown) => unknown
+    }
   }
 }
 

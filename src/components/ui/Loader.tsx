@@ -14,7 +14,7 @@ export function Loader({ label, className }: LoaderProps) {
   return (
     <div className={cx("flex justify-center items-center py-4", className)}>
       <div className={theme.components.loader}></div>
-      {label && <span className="ml-2">{label}</span>}
+      {label!= null && <span className="ml-2">{label}</span>}
     </div>
   )
 }

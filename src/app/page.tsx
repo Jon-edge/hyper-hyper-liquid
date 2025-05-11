@@ -48,7 +48,7 @@ export default function Home() {
             </p>
             <div className="bg-blue-50 p-4 rounded-lg">
               <p className="text-sm text-blue-700">
-                To get started, click the "Connect Wallet" button in the top right corner.
+                To get started, click the &quot;Connect Wallet&quot; button in the top right corner.
               </p>
             </div>
           </div>
@@ -86,5 +86,5 @@ export default function Home() {
         </div>
       </footer>
     </div>
-  );
+  )
 }

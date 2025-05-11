@@ -58,13 +58,13 @@ Panel.Value = function PanelValue({
   className?: string 
 }) {
   // Always use the default value style for consistent font styling
-  const baseStyle = theme.text.values.default;
+  const baseStyle = theme.text.values.default
   
   // Only apply color styles when needed
   const colorStyle = 
-    positive ? baseStyles.colors.text.positive :
-    negative ? baseStyles.colors.text.negative :
-    '';
+    positive != null ? baseStyles.colors.text.positive :
+    negative != null ? baseStyles.colors.text.negative :
+    ''
 
   return (
     <p className={cx(baseStyle, colorStyle, className)}>

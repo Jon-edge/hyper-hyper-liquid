@@ -22,57 +22,57 @@ export function formatNumber(
   useCompactNotation: boolean = false
 ): string {
   // Convert to number if it's a string
-  const num = typeof value === 'string' ? parseFloat(value) : value;
+  const num = typeof value === 'string' ? parseFloat(value) : value
   
   // Handle NaN, undefined, etc.
   if (num === null || num === undefined || isNaN(num)) {
-    return '0';
+    return '0'
   }
   
   // If using compact notation for large numbers
   if (useCompactNotation) {
-    const absValue = Math.abs(num);
+    const absValue = Math.abs(num)
     
     // Apply suffixes based on magnitude
     if (absValue >= 1_000_000_000) { // Billions
-      const scaledValue = num / 1_000_000_000;
-      const precision = forcePrecision !== undefined ? forcePrecision : 2;
-      return `${scaledValue.toFixed(precision)}B`;
+      const scaledValue = num / 1_000_000_000
+      const precision = forcePrecision !== undefined ? forcePrecision : 2
+      return `${scaledValue.toFixed(precision)}B`
     } else if (absValue >= 1_000_000) { // Millions
-      const scaledValue = num / 1_000_000;
-      const precision = forcePrecision !== undefined ? forcePrecision : 2;
-      return `${scaledValue.toFixed(precision)}M`;
+      const scaledValue = num / 1_000_000
+      const precision = forcePrecision !== undefined ? forcePrecision : 2
+      return `${scaledValue.toFixed(precision)}M`
     } else if (absValue >= 1_000) { // Thousands
-      const scaledValue = num / 1_000;
-      const precision = forcePrecision !== undefined ? forcePrecision : 1;
-      return `${scaledValue.toFixed(precision)}k`;
+      const scaledValue = num / 1_000
+      const precision = forcePrecision !== undefined ? forcePrecision : 1
+      return `${scaledValue.toFixed(precision)}k`
     }
     // For smaller numbers, fall through to standard formatting
   }
   
   // If forcePrecision is provided, use it instead of calculating adaptive precision
-  let precision: number;
+  let precision: number
   
   if (forcePrecision !== undefined) {
-    precision = forcePrecision;
+    precision = forcePrecision
   } else {
     // Calculate adaptive precision based on value magnitude
-    precision = maxPrecision;
-    const absValue = Math.abs(num);
+    precision = maxPrecision
+    const absValue = Math.abs(num)
     
     if (absValue >= 1000) {
-      precision = Math.max(0, minPrecision);
+      precision = Math.max(0, minPrecision)
     } else if (absValue >= 100) {
-      precision = Math.max(1, minPrecision);
+      precision = Math.max(1, minPrecision)
     } else if (absValue >= 10) {
-      precision = Math.max(2, minPrecision);
+      precision = Math.max(2, minPrecision)
     } else if (absValue >= 1) {
-      precision = Math.max(2, minPrecision);
+      precision = Math.max(2, minPrecision)
     }
   }
   
   // Format with the determined precision
-  return num.toFixed(precision);
+  return num.toFixed(precision)
 }
 
 /**
@@ -99,80 +99,80 @@ export function formatFiat(
 ): string {
   // Return redacted value if this is sensitive and hide info is enabled
   if (isSensitive && hideInfo) {
-    return '$ ••••••';
+    return '$ ••••••'
   }
   // Convert to number if it's a string
-  const num = typeof value === 'string' ? parseFloat(value) : value;
+  const num = typeof value === 'string' ? parseFloat(value) : value
   
   // Handle NaN, undefined, etc.
   if (num === null || num === undefined || isNaN(num)) {
-    return '$0';
+    return '$0'
   }
   
-  const isNegative = num < 0;
-  const absValue = Math.abs(num);
+  const isNegative = num < 0
+  const absValue = Math.abs(num)
   
   // Determine decimal precision based on magnitude or use forced precision
-  let precision: number;
+  let precision: number
   
   if (forcePrecision !== undefined) {
-    precision = forcePrecision;
+    precision = forcePrecision
   } else {
     // Default to 2 decimal places (cents)
-    precision = 2;
+    precision = 2
     
     // For values >= $1000, don't show cents
     if (absValue >= 1000) {
-      precision = 0;
+      precision = 0
     }
     
     // For small values, increase precision based on magnitude
     if (adaptiveSmallValuePrecision && absValue < 1) {
       // Find the last non-zero digit in the decimal part
-      const strValue = absValue.toFixed(10); // Use a high precision to start with
-      const decimalPart = strValue.includes('.') ? strValue.split('.')[1] : '';
+      const strValue = absValue.toFixed(10) // Use a high precision to start with
+      const decimalPart = strValue.includes('.') ? strValue.split('.')[1] : ''
       
       // Find the position of the last non-zero digit
-      let lastNonZeroPos = -1;
+      let lastNonZeroPos = -1
       for (let i = decimalPart.length - 1; i >= 0; i--) {
         if (decimalPart[i] !== '0') {
-          lastNonZeroPos = i;
-          break;
+          lastNonZeroPos = i
+          break
         }
       }
       
       if (lastNonZeroPos >= 0) {
         // Set precision to include up to the last non-zero digit
         // Add 1 because array is 0-indexed but decimal places start at 1
-        precision = lastNonZeroPos + 1;
+        precision = lastNonZeroPos + 1
         
         // Ensure we have at least 2 decimal places for consistency
-        precision = Math.max(precision, 2);
+        precision = Math.max(precision, 2)
         
         // Cap at a reasonable maximum to avoid excessive precision
-        precision = Math.min(precision, 8);
+        precision = Math.min(precision, 8)
       } else {
         // Default to 2 decimal places if we couldn't find a non-zero digit
-        precision = 2;
+        precision = 2
       }
     }
   }
   
   // Format with appropriate precision
-  let formatted = absValue.toFixed(precision);
+  let formatted = absValue.toFixed(precision)
   
   // Add commas for thousands if requested
   if (showCommas) {
     // Split the number at the decimal point
-    const parts = formatted.split('.');
+    const parts = formatted.split('.')
     // Add commas to the whole number part
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
     // Rejoin with decimal part if it exists
-    formatted = parts.join('.');
+    formatted = parts.join('.')
   }
   
   // Add dollar sign and handle negative sign
-  return isNegative ? `-$${formatted}` : `$${formatted}`;
+  return isNegative ? `-$${formatted}` : `$${formatted}`
 }
 
 /**
@@ -190,33 +190,33 @@ export function formatPercent(
   forcePrecision?: number
 ): string {
   // Convert to number if it's a string
-  const num = typeof value === 'string' ? parseFloat(value) : value;
+  const num = typeof value === 'string' ? parseFloat(value) : value
   
   // Handle NaN, undefined, etc.
   if (num === null || num === undefined || isNaN(num)) {
-    return '0%';
+    return '0%'
   }
   
   // Determine precision based on magnitude or use forced precision
-  let precision: number;
+  let precision: number
   
   if (forcePrecision !== undefined) {
-    precision = forcePrecision;
+    precision = forcePrecision
   } else {
-    const absValue = Math.abs(num);
-    precision = 2; // Default for small numbers
+    const absValue = Math.abs(num)
+    precision = 2 // Default for small numbers
     
     // Determine precision based on magnitude
     if (absValue >= 1000) {
-      precision = 0;  // No decimals for 4+ digits
+      precision = 0  // No decimals for 4+ digits
     } else if (absValue >= 10) {
-      precision = 1;  // 1 decimal for 2-3 digits
+      precision = 1  // 1 decimal for 2-3 digits
     }
   }
   
   // Format with appropriate precision
-  const formatted = num.toFixed(precision);
+  const formatted = num.toFixed(precision)
   
   // Add percentage sign
-  return `${formatted}%`;
+  return `${formatted}%`
 }

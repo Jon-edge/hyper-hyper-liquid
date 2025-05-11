@@ -61,13 +61,13 @@ Table.HeaderCell = forwardRef<HTMLTableCellElement, {
     <th
       ref={ref}
       scope="col"
-      className={cx(theme.table.header.cell, onClick && 'cursor-pointer', className)}
+      className={cx(theme.table.header.cell, onClick != null && 'cursor-pointer', className)}
       onClick={onClick}
       style={style}
       {...props}
     >
       {children}
-      {sortActive && sortDirection && (
+      {sortActive != null && sortDirection != null && (
         <span className="ml-1">{sortDirection === 'asc' ? '\u2191' : '\u2193'}</span>
       )}
     </th>
@@ -109,7 +109,7 @@ Table.Row = function TableRow({
     <tr 
       className={cx(
         isEven ? theme.table.body.row.even : theme.table.body.row.odd,
-        onClick ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50' : '',
+        onClick != null ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50' : '',
         className
       )}
       onClick={onClick}

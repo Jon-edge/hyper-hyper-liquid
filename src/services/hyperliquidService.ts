@@ -7,7 +7,8 @@ import {
   FetchedClearinghouseState,
   WsClearinghouseState,
   asAllMids,
-  AllMids
+  AssetPosition,
+  MarginSummary
 } from '../types/hyperliquidTypes'
 
 // WebSocket connection management
@@ -82,7 +83,7 @@ export const fetchClearinghouseState = async (address: string): Promise<FetchedC
  */
 export const initializeWebSocket = (address?: string, onUpdate?: (accountState?: AccountState) => void): Promise<void> => {
   // If we already have a connection promise in progress, return it
-  if (connectionPromise && websocketConnecting) {
+  if (connectionPromise != null && websocketConnecting) {
     console.log({
       event: 'websocket_reuse',
       timestamp: new Date().toISOString(),
@@ -174,7 +175,7 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
           console.log('Initial ping sent')
           
           // If we have an address, set up the subscription immediately
-          if (address && address !== '') {
+          if (address != null && address !== '') {
             console.log('Setting up subscription for address after connection:', address)
             
             // Send subscription requests directly instead of calling subscribeToUserState again
@@ -207,7 +208,7 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
             console.log('Sent clearinghouse subscription after reconnection')
             
             // Register the callback in the subscriptions map
-            if (onUpdate) {
+            if (onUpdate != null) {
               const webData2Key = `webData2:{"user":"${formattedAddress}"}`
               const clearinghouseKey = `clearinghouseState:{"user":"${formattedAddress}"}`
               
@@ -216,18 +217,18 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
                 console.log('Processing WebSocket data after reconnection:', rawData)
                 try {
                   // Try to convert to AccountState and pass to callback
-                  if (onUpdate && rawData) {
+                  if (onUpdate != null && rawData != null) {
                     // Simple pass-through to onUpdate for now
-                    if (typeof rawData === 'object' && rawData !== null) {
-                      const data = rawData as any
+                    if (typeof rawData === 'object') {
+                      const data = rawData as Record<string, unknown>
                       // Create a minimal AccountState from the data
                       const accountState: AccountState = {
-                        assetPositions: data.assetPositions || [],
+                        assetPositions: Array.isArray(data.assetPositions) ? data.assetPositions as AssetPosition[] : [],
                         midPrices: midPricesCache, // Add mark prices to account state
-                        crossMarginSummary: data.crossMarginSummary,
-                        marginSummary: data.marginSummary,
-                        withdrawable: data.withdrawable,
-                        crossMaintenanceMarginUsed: data.crossMaintenanceMarginUsed
+                        crossMarginSummary: typeof data.crossMarginSummary === 'object' && data.crossMarginSummary != null ? data.crossMarginSummary as MarginSummary : undefined,
+                        marginSummary: typeof data.marginSummary === 'object' && data.marginSummary != null ? data.marginSummary as MarginSummary : undefined,
+                        withdrawable: typeof data.withdrawable === 'string' ? data.withdrawable : undefined,
+                        crossMaintenanceMarginUsed: typeof data.crossMaintenanceMarginUsed === 'string' ? data.crossMaintenanceMarginUsed : undefined
                       }
                       onUpdate(accountState)
                     }
@@ -287,51 +288,51 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
               const [type, paramsStr] = channel.split(':', 2)
               
               // Validate the channel parts
-              if (!type || !paramsStr || !websocket) {
+              if (!type || !paramsStr || (websocket == null)) {
                 console.log('Skipping invalid channel:', channel)
                 return // Skip this channel
               }
               
               // Special handling for channel formats based on type
-              let subscriptionMessage: any
+              let subscriptionMessage: unknown
               
               if (type === 'webData2') {
                 // Handle webData2 subscriptions which have a user field
-                const userMatch = paramsStr.match(/\{"user":"([^"]+)"\}/);
-                if (userMatch && userMatch[1]) {
-                  const user = userMatch[1];
+                const userMatch = paramsStr.match(/\{"user":"([^"]+)"\}/)
+                if (userMatch != null && userMatch[1] != null) {
+                  const user = userMatch[1]
                   subscriptionMessage = {
                     method: 'subscribe',
                     subscription: {
                       type: 'webData2',
                       user: user
                     }
-                  };
+                  }
                 }
               } else {
                 // Regular JSON parsing for other subscription types
                 try {
-                  const params = JSON.parse(paramsStr);
+                  const params = JSON.parse(paramsStr)
                   subscriptionMessage = {
                     method: 'subscribe',
                     subscription: {
                       type,
                       ...params
                     }
-                  };
+                  }
                 } catch (parseErr) {
-                  console.warn(`Could not parse params for channel ${type}:`, parseErr);
-                  return; // Skip this channel
+                  console.warn(`Could not parse params for channel ${type}:`, parseErr)
+                  return // Skip this channel
                 }
               }
               
               // Send the subscription message if valid
-              if (subscriptionMessage) {
-                console.log('Resubscribing with message:', JSON.stringify(subscriptionMessage));
-                websocket.send(JSON.stringify(subscriptionMessage));
+              if (subscriptionMessage != null) {
+                console.log('Resubscribing with message:', JSON.stringify(subscriptionMessage))
+                websocket.send(JSON.stringify(subscriptionMessage))
               }
             } catch (err) {
-              console.error('Error resubscribing to channel:', err);
+              console.error('Error resubscribing to channel:', err)
             }
           })
         }
@@ -397,7 +398,7 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
         }
       }
       
-      websocket.onerror = (error) => {
+      websocket.onerror = () => {
         console.log({
           event: 'websocket_error',
           timestamp: new Date().toISOString(),
@@ -420,7 +421,7 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
           // Check if the message is a pong response
           try {
             const parsedData = JSON.parse(event.data)
-            if (parsedData && parsedData.channel === 'pong') {
+            if (parsedData != null && typeof parsedData === 'object' && parsedData.channel === 'pong') {
               console.log('WebSocket message received: pong')
               lastPongReceived = Date.now()
               return
@@ -480,29 +481,15 @@ export const initializeWebSocket = (address?: string, onUpdate?: (accountState?:
           else if (message.channel != null && message.data != null) {
             // Special handling for allMids updates since they're critical
             if (message.channel === 'allMids') {
-              // Get BTC price at WebSocket message receipt if available
-              const btcPrice = message.data && 
-                              typeof message.data === 'object' && 
-                              message.data.mids && 
-                              typeof message.data.mids === 'object' && 
-                              message.data.mids['BTC'] ? 
-                              message.data.mids['BTC'] : 'unavailable'
-              
-              console.log({
-                event: 'allMids_update_received',
-                timestamp: new Date().toISOString(),
-                btc_price: btcPrice
-              })
-              
               // Check for direct allMids subscription first
               const callback = websocketSubscriptions.get('allMids')  
-              if (callback) {
+              if (callback != null) {
                 callback(message.data)
               }
               
               // Also check for the parameterized version
               const paramCallback = websocketSubscriptions.get('allMids:{}')
-              if (paramCallback) {
+              if (paramCallback != null) {
                 paramCallback(message.data)
               }
             } else {
@@ -699,8 +686,6 @@ export const subscribeToChannel = async <T>(channel: string, params: Subscriptio
  * Subscribe to user state updates via WebSocket
  */
 // Cache for the last known good state for each user
-const userStateCache: Map<string, AccountState> = new Map()
-
 // Cache for market prices
 let midPricesCache: Record<string, string> = {}
 
@@ -716,7 +701,7 @@ export const subscribeToUserState = async (address: string, onUpdate: (accountSt
   try {
     console.log(`Fetching initial data for ${address}`)
     const initialData = await fetchClearinghouseState(address)
-    if (initialData) {
+    if (initialData != null) {
       console.log(`Initial data received for ${address}`)
       onUpdate(initialData)
     }
@@ -751,15 +736,15 @@ export const subscribeToUserState = async (address: string, onUpdate: (accountSt
       // First, try to extract data from the nested clearinghouseState if it exists
       if (websocketUserData.clearinghouseState != null) {
         console.log('Processing webData2 format with nested clearinghouseState')
-        processWsClearinghouseData(websocketUserData.clearinghouseState)
+        processWsClearinghouseData(websocketUserData.clearinghouseState as WsClearinghouseState)
         return
       }
       
       // If we get here, try processing the top-level data
       console.log('No nested clearinghouseState found, trying to process top-level data')
-      if (websocketUserData.crossMarginSummary || websocketUserData.assetPositions || websocketUserData.withdrawable) {
+      if (websocketUserData != null && (typeof websocketUserData.crossMarginSummary !== 'undefined' || typeof websocketUserData.assetPositions !== 'undefined' || typeof websocketUserData.withdrawable !== 'undefined')) {
         console.log('Found top-level data fields, processing as WsClearinghouseState')
-        processWsClearinghouseData(websocketUserData)
+        processWsClearinghouseData(websocketUserData as WsClearinghouseState)
         return
       }
       
@@ -771,21 +756,27 @@ export const subscribeToUserState = async (address: string, onUpdate: (accountSt
       // Try parsing as a different structure as fallback
       try {
         console.log('Attempting direct access to data fields...')
-        const data = rawWsData as any
-        if (data && (data.crossMarginSummary || data.assetPositions || data.withdrawable || 
-                    (data.clearinghouseState && (data.clearinghouseState.crossMarginSummary || 
-                                               data.clearinghouseState.assetPositions || 
-                                               data.clearinghouseState.withdrawable)))) {
+        const data = rawWsData as Record<string, unknown>
+        if (data != null && (
+            typeof data.crossMarginSummary !== 'undefined' || 
+            typeof data.assetPositions !== 'undefined' || 
+            typeof data.withdrawable !== 'undefined' || 
+            (typeof data.clearinghouseState === 'object' && data.clearinghouseState != null && (
+                typeof (data.clearinghouseState as Record<string, unknown>).crossMarginSummary !== 'undefined' || 
+                typeof (data.clearinghouseState as Record<string, unknown>).assetPositions !== 'undefined' || 
+                typeof (data.clearinghouseState as Record<string, unknown>).withdrawable !== 'undefined'
+            ))
+        )) {
           console.log('Found usable data without type validation, attempting to process')
           
           // Try to process the clearinghouseState if it exists
-          if (data.clearinghouseState) {
-            processWsClearinghouseData(data.clearinghouseState)
+          if (typeof data.clearinghouseState === 'object' && data.clearinghouseState != null) {
+            processWsClearinghouseData(data.clearinghouseState as WsClearinghouseState)
             return
           }
           
           // Otherwise try to process the top-level data
-          processWsClearinghouseData(data)
+          processWsClearinghouseData(data as WsClearinghouseState)
         }
       } catch (fallbackError) {
         console.error('Fallback processing also failed:', fallbackError)
@@ -987,7 +978,7 @@ export const subscribeToMidPrices = async (callback: (prices: Record<string, str
     })
     
     // Clear the heartbeat interval to prevent memory leaks
-    if (midPricesHeartbeat) {
+    if (midPricesHeartbeat != null) {
       clearInterval(midPricesHeartbeat)
     }
     

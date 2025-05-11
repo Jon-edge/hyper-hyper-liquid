@@ -23,7 +23,7 @@ export default function WalletConnect() {
   const { account, connect, disconnect, isConnecting, hideInfo, toggleHideInfo } = useWallet()
 
   // Display either full account (truncated) or redacted version based on hideInfo state
-  const displayAccount = account ? (
+  const displayAccount = (account != null) ? (
     hideInfo ? 
       "0x" + "•".repeat(8) : 
       `${account.slice(0, 6)}...${account.slice(-4)}`
@@ -31,7 +31,7 @@ export default function WalletConnect() {
   
   return (
     <div className={theme.layout.flex.row}>
-      {account ? (
+      {account != null ? (
         <div className={theme.layout.flex.rowGap}>
           {/* Eye icon toggle button */}
           <button 

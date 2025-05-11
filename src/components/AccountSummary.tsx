@@ -10,7 +10,7 @@ interface AccountSummaryProps {
   accountState: AccountState
 }
 
-const AccountSummary = React.memo(({ accountState }: AccountSummaryProps) => {
+const AccountSummaryComponent = ({ accountState }: AccountSummaryProps) => {
   const { hideInfo } = useWallet()
   
   // Create state for all the values we need to display
@@ -24,7 +24,7 @@ const AccountSummary = React.memo(({ accountState }: AccountSummaryProps) => {
   
   // Update all values when accountState changes
   useEffect(() => {
-    if (!accountState) return
+    if (accountState == null) return
     
     // Extract base values
     const newAccountValue = accountState.crossMarginSummary?.accountValue ?? '0'
@@ -41,7 +41,7 @@ const AccountSummary = React.memo(({ accountState }: AccountSummaryProps) => {
     
     // Preserve the maintenance margin value if it's missing in the update
     // This fixes the issue where CrossMarginRatio becomes 0 after initial value
-    const newMaintenanceMargin = accountState.crossMaintenanceMarginUsed || maintenanceMargin || '0'
+    const newMaintenanceMargin = accountState.crossMaintenanceMarginUsed ?? maintenanceMargin ?? '0'
     
     // Calculate cross margin ratio (maintenance margin / portfolio value) according to Hyperliquid
     const accountValueNum = parseFloat(newAccountValue)
@@ -54,7 +54,7 @@ const AccountSummary = React.memo(({ accountState }: AccountSummaryProps) => {
     
     // Calculate total unrealized PNL
     let newTotalUnrealizedPnl = 0
-    if (accountState.assetPositions && accountState.assetPositions.length > 0) {
+    if (accountState.assetPositions != null && accountState.assetPositions.length > 0) {
       newTotalUnrealizedPnl = accountState.assetPositions.reduce((total, position) => {
         const pnl = parseFloat(position.position.unrealizedPnl ?? '0')
         return total + pnl
@@ -82,7 +82,7 @@ const AccountSummary = React.memo(({ accountState }: AccountSummaryProps) => {
       crossAccountLeverage: newCrossAccountLeverage,
       totalUnrealizedPnl: newTotalUnrealizedPnl
     })
-  }, [accountState]) // Re-run when accountState changes
+  }, [accountState, maintenanceMargin]) // Re-run when accountState or maintenanceMargin changes
   
   // Component is now using React.memo and useEffect to update when accountState changes
   
@@ -134,6 +134,9 @@ const AccountSummary = React.memo(({ accountState }: AccountSummaryProps) => {
       </Panel>
     </div>
   )
-})
+}
+
+const AccountSummary = React.memo(AccountSummaryComponent)
+AccountSummary.displayName = 'AccountSummary'
 
 export default AccountSummary
