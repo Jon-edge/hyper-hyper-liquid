@@ -1,43 +1,16 @@
-// Hyperliquid API service
+// Hyperliquid API service refactored to use react-use-websocket
 
 import {
-  AccountState,
   asFetchedClearinghouseState,
-  asWsWebdata2,
   FetchedClearinghouseState,
-  WsClearinghouseState,
-  asAllMids,
-  AssetPosition,
-  MarginSummary
+  asAllMids
 } from '../types/hyperliquidTypes'
-
-// WebSocket connection management
-let websocket: WebSocket | null = null
-let websocketConnecting = false // Flag to prevent multiple simultaneous connection attempts
-let connectionPromise: Promise<void> | null = null // Track the current connection promise
-
-// Track WebSocket subscriptions with their callbacks
-const websocketSubscriptions: Map<string, (data: unknown) => void> = new Map()
-let reconnectAttempts = 0
-const MAX_RECONNECT_ATTEMPTS = 10
-const RECONNECT_DELAY_MS = 5000 // 5 seconds delay
-let reconnectTimer: NodeJS.Timeout | null = null
-let isIntentionalClose = false
-
-// Ping/Pong mechanism to keep connection alive (based on Hyperliquid SDK)
-let pingInterval: NodeJS.Timeout | null = null
-let lastPongReceived = 0
-let connectionHealthCheckInterval: NodeJS.Timeout | null = null
 
 // WebSocket connection status for UI indicator
 export type WebSocketStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
-export let websocketStatus: WebSocketStatus = 'disconnected'
 
-// Callback for status updates
-let statusChangeCallbacks: ((status: WebSocketStatus) => void)[] = []
-
-// Callbacks for message received
-let messageCallbacks: (() => void)[] = []
+// Cache for mid prices
+let cachedMidPrices: Record<string, string> = {}
 
 /**
  * Fetches the user's state information including balance and positions from Hyperliquid API
@@ -79,952 +52,122 @@ export const fetchClearinghouseState = async (address: string): Promise<FetchedC
 }
 
 /**
- * Initialize the WebSocket connection to Hyperliquid
+ * Get the WebSocket URL for Hyperliquid
  */
-export const initializeWebSocket = (address?: string, onUpdate?: (accountState?: AccountState) => void): Promise<void> => {
-  // If we already have a connection promise in progress, return it
-  if (connectionPromise != null && websocketConnecting) {
-    console.log({
-      event: 'websocket_reuse',
-      timestamp: new Date().toISOString(),
-      message: 'Connection already in progress, reusing existing promise'
-    })
-    return connectionPromise
-  }
-  
-  // Create a new connection promise
-  connectionPromise = new Promise((resolve, reject) => {
-    try {
-      // Set connecting flag to prevent multiple simultaneous connection attempts
-      websocketConnecting = true
-      // Clear any existing reconnect timer
-      if (reconnectTimer != null) {
-        clearTimeout(reconnectTimer)
-        reconnectTimer = null
-      }
-      
-      // Update status
-      updateWebSocketStatus('connecting')
-      
-      // Clean up existing connection if any
-      if (websocket != null) {
-        // Clear all existing event handlers to prevent memory leaks
-        websocket.onopen = null
-        websocket.onclose = null
-        websocket.onerror = null
-        websocket.onmessage = null
-        
-        if (websocket.readyState === WebSocket.OPEN || websocket.readyState === WebSocket.CONNECTING) {
-          isIntentionalClose = true
-          websocket.close()
-          isIntentionalClose = false
-        }
-        websocket = null
-      }
-      
-      // Clear existing intervals
-      if (pingInterval != null) {
-        clearInterval(pingInterval)
-        pingInterval = null
-      }
-      
-      if (connectionHealthCheckInterval != null) {
-        clearInterval(connectionHealthCheckInterval)
-        connectionHealthCheckInterval = null
-      }
-
-      console.log('Creating new WebSocket connection')
-      websocket = new WebSocket('wss://api.hyperliquid.xyz/ws')
-      
-      // Set a timeout for the connection attempt
-      const connectionTimeout = setTimeout(() => {
-        if (websocket != null && websocket.readyState !== WebSocket.OPEN) {
-          console.error('WebSocket connection timeout after 10 seconds')
-          if (websocket != null) {
-            websocket.close()
-          }
-          updateWebSocketStatus('error')
-          reject(new Error('Connection timeout'))
-        }
-      }, 10000) // 10 second timeout
-      
-      // Make sure websocket is initialized before setting event handlers
-      if (websocket == null) {
-        console.error('WebSocket initialization failed')
-        updateWebSocketStatus('error')
-        reject(new Error('WebSocket initialization failed'))
-        return
-      }
-      
-      websocket.onopen = () => {
-        clearTimeout(connectionTimeout)
-        console.log({
-          event: 'websocket_open',
-          timestamp: new Date().toISOString(),
-          message: 'Connection established'
-        })
-        updateWebSocketStatus('connected')
-        reconnectAttempts = 0
-        lastPongReceived = Date.now()
-        // Reset connecting flag now that we're connected
-        websocketConnecting = false
-        
-        // Send an initial ping immediately to test the connection
-        try {
-          websocket!.send(JSON.stringify({ method: 'ping' }))
-          console.log('Initial ping sent')
-          
-          // If we have an address, set up the subscription immediately
-          if (address != null && address !== '') {
-            console.log('Setting up subscription for address after connection:', address)
-            
-            // Send subscription requests directly instead of calling subscribeToUserState again
-            // This avoids potential recursion issues
-            const formattedAddress = address.toLowerCase()
-            
-            // Create and send webData2 subscription
-            const webData2Message = {
-              method: 'subscribe',
-              subscription: {
-                type: 'webData2',
-                user: formattedAddress
-              }
-            }
-            
-            // Create and send clearinghouse subscription
-            const clearinghouseMessage = {
-              method: 'subscribe',
-              subscription: {
-                type: 'clearinghouseState',
-                user: formattedAddress
-              }
-            }
-            
-            console.log('Sending subscription requests after reconnection')
-            websocket!.send(JSON.stringify(webData2Message))
-            console.log('Sent webData2 subscription after reconnection')
-            
-            websocket!.send(JSON.stringify(clearinghouseMessage))
-            console.log('Sent clearinghouse subscription after reconnection')
-            
-            // Register the callback in the subscriptions map
-            if (onUpdate != null) {
-              const webData2Key = `webData2:{"user":"${formattedAddress}"}`
-              const clearinghouseKey = `clearinghouseState:{"user":"${formattedAddress}"}`
-              
-              // Create a wrapper function that will process the data
-              const processUserData = (rawData: unknown) => {
-                console.log('Processing WebSocket data after reconnection:', rawData)
-                try {
-                  // Try to convert to AccountState and pass to callback
-                  if (onUpdate != null && rawData != null) {
-                    // Simple pass-through to onUpdate for now
-                    if (typeof rawData === 'object') {
-                      const data = rawData as Record<string, unknown>
-                      // Create a minimal AccountState from the data
-                      const accountState: AccountState = {
-                        assetPositions: Array.isArray(data.assetPositions) ? data.assetPositions as AssetPosition[] : [],
-                        midPrices: midPricesCache, // Add mark prices to account state
-                        crossMarginSummary: typeof data.crossMarginSummary === 'object' && data.crossMarginSummary != null ? data.crossMarginSummary as MarginSummary : undefined,
-                        marginSummary: typeof data.marginSummary === 'object' && data.marginSummary != null ? data.marginSummary as MarginSummary : undefined,
-                        withdrawable: typeof data.withdrawable === 'string' ? data.withdrawable : undefined,
-                        crossMaintenanceMarginUsed: typeof data.crossMaintenanceMarginUsed === 'string' ? data.crossMaintenanceMarginUsed : undefined
-                      }
-                      onUpdate(accountState)
-                    }
-                  }
-                } catch (error) {
-                  console.error('Error processing WebSocket data after reconnection:', error)
-                }
-              }
-              
-              // Register the callbacks
-              websocketSubscriptions.set(webData2Key, processUserData)
-              websocketSubscriptions.set(clearinghouseKey, processUserData)
-              console.log('Registered WebSocket callbacks after reconnection')
-            }
-          }
-        } catch (err) {
-          console.error('Error sending initial ping:', err)
-        }
-        
-        // Setup ping interval (30 seconds)
-        pingInterval = setInterval(() => {
-          if (websocket != null && websocket.readyState === WebSocket.OPEN) {
-            try {
-              websocket.send(JSON.stringify({ method: 'ping' }))
-            } catch (err) {
-              console.error('Error sending ping:', err)
-              // If we can't send a ping, the connection might be dead
-              if (websocket != null) {
-                websocket.close(1000, 'Unable to send ping')
-              }
-            }
-          }
-        }, 30000) // Send ping every 30 seconds
-        
-        // Check connection health every 10 seconds
-        connectionHealthCheckInterval = setInterval(() => {
-          if (websocket == null || websocket.readyState !== WebSocket.OPEN) return
-          
-          const now = Date.now()
-          const pongAge = now - lastPongReceived
-          
-          // If no pong received in 60 seconds, consider connection dead
-          if (pongAge > 60000) { // 1 minute
-            console.error(`No pong received in ${pongAge}ms, reconnecting...`)
-            if (websocket != null) {
-              websocket.close(1000, 'No pong received')
-            }
-          }
-        }, 10000) // Check every 10 seconds
-        
-        // Resubscribe to all active subscriptions
-        if (websocketSubscriptions.size > 0) {
-          console.log(`Resubscribing to ${websocketSubscriptions.size} channels`)
-          // We need to resubscribe to all channels
-          websocketSubscriptions.forEach((_, channel) => {
-            try {
-              const [type, paramsStr] = channel.split(':', 2)
-              
-              // Validate the channel parts
-              if (!type || !paramsStr || (websocket == null)) {
-                console.log('Skipping invalid channel:', channel)
-                return // Skip this channel
-              }
-              
-              // Special handling for channel formats based on type
-              let subscriptionMessage: unknown
-              
-              if (type === 'webData2') {
-                // Handle webData2 subscriptions which have a user field
-                const userMatch = paramsStr.match(/\{"user":"([^"]+)"\}/)
-                if (userMatch != null && userMatch[1] != null) {
-                  const user = userMatch[1]
-                  subscriptionMessage = {
-                    method: 'subscribe',
-                    subscription: {
-                      type: 'webData2',
-                      user: user
-                    }
-                  }
-                }
-              } else {
-                // Regular JSON parsing for other subscription types
-                try {
-                  const params = JSON.parse(paramsStr)
-                  subscriptionMessage = {
-                    method: 'subscribe',
-                    subscription: {
-                      type,
-                      ...params
-                    }
-                  }
-                } catch (parseErr) {
-                  console.warn(`Could not parse params for channel ${type}:`, parseErr)
-                  return // Skip this channel
-                }
-              }
-              
-              // Send the subscription message if valid
-              if (subscriptionMessage != null) {
-                console.log('Resubscribing with message:', JSON.stringify(subscriptionMessage))
-                websocket.send(JSON.stringify(subscriptionMessage))
-              }
-            } catch (err) {
-              console.error('Error resubscribing to channel:', err)
-            }
-          })
-        }
-        
-        resolve()
-      }
-      
-      websocket.onclose = (event) => {
-        clearTimeout(connectionTimeout)
-        
-        // Clear ping interval and health check
-        if (pingInterval != null) {
-          clearInterval(pingInterval)
-          pingInterval = null
-        }
-        
-        if (connectionHealthCheckInterval != null) {
-          clearInterval(connectionHealthCheckInterval)
-          connectionHealthCheckInterval = null
-        }
-        
-        // Reset connection state variables to allow future connection attempts
-        websocketConnecting = false
-        connectionPromise = null
-        
-        // Log more details about the close event
-        console.log({
-          event: 'websocket_close',
-          timestamp: new Date().toISOString(),
-          code: event.code,
-          reason: event.reason || 'No reason provided'
-        })
-        
-        // Handle specific close codes
-        if (event.code === 1006) {
-          console.error('WebSocket closed abnormally (1006). This usually indicates a network issue or server timeout.')
-        } else if (event.code === 1000) {
-          console.log('WebSocket closed normally')
-        }
-        
-        updateWebSocketStatus('disconnected')
-        
-        // Reset WebSocket reference
-        websocket = null
-        
-        // Don't attempt to reconnect if closed intentionally
-        if (isIntentionalClose === false && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-          reconnectAttempts++
-          // Use exponential backoff with jitter for reconnection
-          const baseDelay = RECONNECT_DELAY_MS * Math.pow(1.5, Math.min(reconnectAttempts - 1, 5))
-          const jitter = Math.random() * 1000 // Add up to 1 second of jitter
-          const delay = baseDelay + jitter
-          
-          console.log(`Attempting to reconnect in ${Math.round(delay)}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`)
-          
-          reconnectTimer = setTimeout(() => {
-            console.log('Executing reconnection attempt...')
-            initializeWebSocket()
-              .catch(err => console.error('Failed to reconnect WebSocket:', err))
-          }, delay)
-        } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-          console.error('Maximum reconnection attempts reached')
-        }
-      }
-      
-      websocket.onerror = () => {
-        console.log({
-          event: 'websocket_error',
-          timestamp: new Date().toISOString(),
-          error: 'Connection error'
-        })
-        updateWebSocketStatus('error')
-        // Reset connecting flag to allow future connection attempts
-        websocketConnecting = false
-        // Don't reject here, let onclose handle reconnection
-      }
-      
-      // Define the message handler function
-      const handleWebSocketMessage = (event: MessageEvent) => {
-        try {
-          // Notify message received - simple pulse trigger
-          if (messageCallbacks.length > 0) {
-            messageCallbacks.forEach(callback => callback())
-          }
-          
-          // Check if the message is a pong response
-          try {
-            const parsedData = JSON.parse(event.data)
-            if (parsedData != null && typeof parsedData === 'object' && parsedData.channel === 'pong') {
-              console.log('WebSocket message received: pong')
-              lastPongReceived = Date.now()
-              return
-            }
-          } catch {
-            // If it's not JSON, check if it's a plain string pong
-            if (event.data === 'pong') {
-              console.log('WebSocket message received: plain pong')
-              lastPongReceived = Date.now()
-              return
-            }
-          }
-          
-          // Parse the message data
-          const message = JSON.parse(event.data)
-          console.log('WebSocket message received:', message.channel)
-          
-          // Enhanced debugging - log the full message
-          console.log('Full WebSocket message:',message.channel, message)
-          
-          // Handle subscription response
-          if (message.channel === 'subscriptionResponse') {
-            console.log('Subscription confirmed:', message.data.subscription)
-            return
-          }
-          
-          // Log the full message structure for debugging
-          // console.log('WebSocket message structure:', JSON.stringify(message, null, 2))
-          
-          // Handle webData2 updates. Preferred, for "frontend applications"
-          // according to the docs.
-          if (message.channel === 'webData2') {
-            console.log('Received webData2 update')
-            
-            if (message.data != null && typeof message.data === 'object') {
-              // Find subscriptions for this channel
-              const user = message.data.user ?? ''
-              const subscriptionKey = `webData2:{"user":"${user}"}`
-              // console.log('Processing webData2 update for subscription:', subscriptionKey)
-              
-              // Check if we have a subscription for this user
-              const callback = websocketSubscriptions.get(subscriptionKey)
-              if (callback != null) {
-                // Process the data and call the callback
-                callback(message.data)
-                // console.log('Processed webData2 update for', subscriptionKey)
-              } else {
-                // console.log('No subscription found for webData2 update with key:', subscriptionKey)
-                // console.log('Available subscriptions:', Array.from(websocketSubscriptions.keys()))
-              }
-            }
-          }
-          
-          // Note: We're no longer handling clearinghouseState separately since webData2 contains all needed data
-          
-          // For any other channels, try to find a matching subscription
-          else if (message.channel != null && message.data != null) {
-            // Special handling for allMids updates since they're critical
-            if (message.channel === 'allMids') {
-              // Check for direct allMids subscription first
-              const callback = websocketSubscriptions.get('allMids')  
-              if (callback != null) {
-                callback(message.data)
-              }
-              
-              // Also check for the parameterized version
-              const paramCallback = websocketSubscriptions.get('allMids:{}')
-              if (paramCallback != null) {
-                paramCallback(message.data)
-              }
-            } else {
-              console.log({
-                event: 'websocket_channel_update', 
-                timestamp: new Date().toISOString(),
-                channel: message.channel
-              })
-              
-              // Try to find a matching subscription by channel prefix
-              const matchingKeys = Array.from(websocketSubscriptions.keys())
-                .filter(key => key.startsWith(message.channel + ':'))
-              
-              if (matchingKeys.length > 0) {
-                console.log({
-                  event: 'matching_subscriptions_found', 
-                  timestamp: new Date().toISOString(),
-                  count: matchingKeys.length, 
-                  channel: message.channel
-                })
-                
-                matchingKeys.forEach(key => {
-                  const callback = websocketSubscriptions.get(key)
-                  if (callback != null) {
-                    callback(message.data)
-                  }
-                })
-              } else if (websocketSubscriptions.has(message.channel)) {
-                // For channels without parameters
-                const callback = websocketSubscriptions.get(message.channel)
-                if (callback != null) {
-                  callback(message.data)
-                }
-              } else {
-                console.log({
-                  event: 'no_handler_found',
-                  timestamp: new Date().toISOString(),
-                  channel: message.channel
-                })
-              }
-            }
-          } else if (message.error != null) {
-            console.log({
-              event: 'websocket_error_response',
-              timestamp: new Date().toISOString(),
-              error: message.error
-            })
-          }
-        } catch (err) {
-          console.log({
-            event: 'websocket_message_processing_error',
-            timestamp: new Date().toISOString(),
-            error: err instanceof Error ? err.message : 'Unknown error',
-            raw_message: typeof event.data === 'string' ? event.data.substring(0, 100) : 'Non-string data'
-          })
-        }
-      }
-      
-      // Assign the message handler to the websocket
-      websocket.onmessage = handleWebSocketMessage
-    } catch (error) {
-      console.log({
-        event: 'websocket_init_error',
-        timestamp: new Date().toISOString(),
-        error: 'Failed to initialize WebSocket'
-      })
-      updateWebSocketStatus('error')
-      // Reset connection state to allow future attempts
-      websocketConnecting = false
-      connectionPromise = null
-      reject(error)
-    }
-  })
-  
-  // Return the connection promise
-  return connectionPromise
+export const getHyperliquidWebSocketUrl = (): string => {
+  return 'wss://api.hyperliquid.xyz/ws'
 }
 
 /**
- * Manually close the WebSocket connection
+ * Create a subscription message for mid prices
  */
-export const closeWebSocketConnection = () => {
-  // Clear reconnect timer
-  if (reconnectTimer != null) {
-    clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-  
-  // Clear ping interval
-  if (pingInterval != null) {
-    clearInterval(pingInterval)
-    pingInterval = null
-  }
-  
-  // Clear health check interval
-  if (connectionHealthCheckInterval != null) {
-    clearInterval(connectionHealthCheckInterval)
-    connectionHealthCheckInterval = null
-  }
-  
-  // Close WebSocket connection
-  if (websocket != null) {
-    isIntentionalClose = true
-    websocket.close()
-    isIntentionalClose = false
-    websocket = null
-  }
-  
-  updateWebSocketStatus('disconnected')
-}
-
-/**
- * Update WebSocket status and notify all registered callbacks
- */
-const updateWebSocketStatus = (status: WebSocketStatus) => {
-  websocketStatus = status
-  statusChangeCallbacks.forEach(callback => callback(status))
-}
-
-/**
- * Register a callback to be notified of WebSocket status changes
- */
-export const onWebSocketStatusChange = (callback: (status: WebSocketStatus) => void) => {
-  statusChangeCallbacks.push(callback)
-  // Immediately call with current status
-  callback(websocketStatus)
-  
-  // Return a function to unregister the callback
-  return () => {
-    statusChangeCallbacks = statusChangeCallbacks.filter(cb => cb !== callback)
-  }
-}
-
-/**
- * Register a callback to be notified when a WebSocket message is received
- * Used for UI indicators to show message activity
- */
-export const onWebSocketMessage = (callback: () => void) => {
-  messageCallbacks.push(callback)
-  
-  return () => {
-    messageCallbacks = messageCallbacks.filter(cb => cb !== callback)
-  }
-}
-
-/**
- * Subscribe to a WebSocket channel
- */
-interface SubscriptionParams {
-  [key: string]: string | number | boolean | object;
-}
-
-export const subscribeToChannel = async <T>(channel: string, params: SubscriptionParams, callback: (data: T) => void): Promise<() => void> => {
-  // Ensure WebSocket is connected
-  if (websocket == null || websocket.readyState !== WebSocket.OPEN) {
-    await initializeWebSocket()
-  }
-  
-  // Create subscription message
-  const subscriptionMessage = {
-    method: 'subscribe',
-    subscription: {
-      type: channel,
-      ...params
-    }
-  }
-  
-  // Send subscription request
-  websocket!.send(JSON.stringify(subscriptionMessage))
-  
-  // Store callback
-  const subscriptionKey = `${channel}:${JSON.stringify(params)}`
-  websocketSubscriptions.set(subscriptionKey, callback as (data: unknown) => void)
-  
-  // Return unsubscribe function
-  return () => {
-    const unsubscribeMessage = {
-      method: 'unsubscribe',
-      subscription: {
-        type: channel,
-        ...params
-      }
-    }
-    
-    if (websocket != null && websocket.readyState === WebSocket.OPEN) {
-      websocket.send(JSON.stringify(unsubscribeMessage))
-    }
-    
-    websocketSubscriptions.delete(subscriptionKey)
-  }
-}
-
-/**
- * Subscribe to user state updates via WebSocket
- */
-// Cache for the last known good state for each user
-// Cache for market prices
-let midPricesCache: Record<string, string> = {}
-
-export const subscribeToUserState = async (address: string, onUpdate: (accountState?: AccountState) => void): Promise<() => void> => {
-  if (!address) {
-    console.error('No address provided to subscribeToUserState')
-    return () => {} // Return empty unsubscribe function
-  }
-
-  console.log(`Setting up subscription for address: ${address}`)
-  
-  // Step 1: Fetch initial data first to ensure we have complete state
-  try {
-    console.log(`Fetching initial data for ${address}`)
-    const initialData = await fetchClearinghouseState(address)
-    if (initialData != null) {
-      console.log(`Initial data received for ${address}`)
-      onUpdate(initialData)
-    }
-  } catch (error) {
-    console.error('Error fetching initial user data:', error)
-  }
-  
-  // Step 2: Ensure WebSocket is connected before subscribing
-  if (websocket == null || websocket.readyState !== WebSocket.OPEN) {
-    console.log('WebSocket not connected, initializing...')
-    await initializeWebSocket()
-  }
-  
-  // Format the address for the API
-  const formattedAddress = address.toLowerCase()
-  console.log(`Subscribing to user state updates for address: ${formattedAddress}`)
-  
-  // Process the user data directly from WebSocket
-  const processUserData = (rawWsData: unknown) => {
-    console.log('processUserData called with data:', rawWsData)
-    try {
-      // Try to parse as asWsWebData2, preferred as it contains all the data
-      console.log('Attempting to clean as asWsWebdata2...')
-      const websocketUserData = asWsWebdata2(rawWsData)
-      console.log('Successfully cleaned with asWsWebdata2:')
-      
-      // Extract data based on the format received
-      // We need to handle two possible formats:
-      // 1. Direct data with crossMarginSummary, withdrawable, assetPositions at the top level
-      // 2. Nested data where these fields are inside clearinghouseState
-      
-      // First, try to extract data from the nested clearinghouseState if it exists
-      if (websocketUserData.clearinghouseState != null) {
-        console.log('Processing webData2 format with nested clearinghouseState')
-        processWsClearinghouseData(websocketUserData.clearinghouseState as WsClearinghouseState)
-        return
-      }
-      
-      // If we get here, try processing the top-level data
-      console.log('No nested clearinghouseState found, trying to process top-level data')
-      if (websocketUserData != null && (typeof websocketUserData.crossMarginSummary !== 'undefined' || typeof websocketUserData.assetPositions !== 'undefined' || typeof websocketUserData.withdrawable !== 'undefined')) {
-        console.log('Found top-level data fields, processing as WsClearinghouseState')
-        processWsClearinghouseData(websocketUserData as WsClearinghouseState)
-        return
-      }
-      
-      console.log('No recognizable data structure found in WebSocket message')
-    } catch (error) {
-      console.error('Error processing WebSocket data:', error)
-      console.error('Invalid data format received:', rawWsData)
-      
-      // Try parsing as a different structure as fallback
-      try {
-        console.log('Attempting direct access to data fields...')
-        const data = rawWsData as Record<string, unknown>
-        if (data != null && (
-            typeof data.crossMarginSummary !== 'undefined' || 
-            typeof data.assetPositions !== 'undefined' || 
-            typeof data.withdrawable !== 'undefined' || 
-            (typeof data.clearinghouseState === 'object' && data.clearinghouseState != null && (
-                typeof (data.clearinghouseState as Record<string, unknown>).crossMarginSummary !== 'undefined' || 
-                typeof (data.clearinghouseState as Record<string, unknown>).assetPositions !== 'undefined' || 
-                typeof (data.clearinghouseState as Record<string, unknown>).withdrawable !== 'undefined'
-            ))
-        )) {
-          console.log('Found usable data without type validation, attempting to process')
-          
-          // Try to process the clearinghouseState if it exists
-          if (typeof data.clearinghouseState === 'object' && data.clearinghouseState != null) {
-            processWsClearinghouseData(data.clearinghouseState as WsClearinghouseState)
-            return
-          }
-          
-          // Otherwise try to process the top-level data
-          processWsClearinghouseData(data as WsClearinghouseState)
-        }
-      } catch (fallbackError) {
-        console.error('Fallback processing also failed:', fallbackError)
-      }
-    }
-  }
-  
-  // Helper function to convert WebSocket data to AccountState
-  const processWsClearinghouseData = (processedData: WsClearinghouseState) => {
-    try {
-      // Count positions if available for logging
-      let positionCount = 0
-      if (Array.isArray(processedData.assetPositions)) {
-        positionCount = processedData.assetPositions.length
-        console.log('Found', positionCount, 'positions')
-      } else {
-        console.log('No positions found in data')
-      }
-      
-      // Create a complete UserState object from the WebSocket data
-      const accountState: AccountState = {
-        assetPositions: processedData.assetPositions ?? [],
-        crossMarginSummary: processedData.crossMarginSummary ?? {
-          accountValue: '0',
-          totalMarginUsed: '0',
-          totalNtlPos: '0',
-          totalRawUsd: '0',
-          leverage: '0'
-        },
-        marginSummary: undefined,// processedData.marginSummary, // TODO
-        crossMaintenanceMarginUsed: undefined, // Not provided in WebSocket data
-        withdrawable: processedData.withdrawable,
-      }
-      
-      console.log('processWsClearinghouseData:', accountState)
-      
-      // Call the callback with the processed data
-      onUpdate(accountState)
-    } catch (error) {
-      console.error('Error processing user state data:', error)
-      console.error('Invalid data format:', processedData)
-    }
-  }
-  
-  // Create subscription for WebData2 which contains aggregate user information
-  const webData2Key = `webData2:{"user":"${formattedAddress}"}`
-  
-  // Register the callback for webData2
-  websocketSubscriptions.set(webData2Key, processUserData)
-  
-  console.log('Setting up subscription with key:', webData2Key)
-  
-  // Send subscription request for WebData2
-  const webData2Message = {
-    method: 'subscribe',
-    subscription: {
-      type: 'webData2',
-      user: formattedAddress
-    }
-  }
-  
-  // We only need webData2 subscription now
-  
-  // Send subscription request if WebSocket is connected
-  if (websocket != null && websocket.readyState === WebSocket.OPEN) {
-    try {
-      console.log('Sending webData2 subscription request for address:', formattedAddress)
-      console.log('Subscription message:', webData2Message)
-      websocket.send(JSON.stringify(webData2Message))
-      console.log('Sent webData2 subscription request successfully')
-    } catch (error) {
-      console.error('Error sending subscription request:', error)
-    }
-  } else { 
-    console.error('WebSocket not connected, subscription request not sent. State:', websocket?.readyState)
-  }
-  
-  // Return unsubscribe function
-  return () => {
-    console.log(`Unsubscribing from user state for ${formattedAddress}`)
-    
-    if (websocket != null && websocket.readyState === WebSocket.OPEN) {
-      // Unsubscribe from webData2
-      websocket.send(JSON.stringify({
-        method: 'unsubscribe',
-        subscription: {
-          type: 'webData2',
-          user: formattedAddress
-        }
-      }))
-    }
-    
-    // Clean up subscription from the map
-    websocketSubscriptions.delete(webData2Key)
-    
-    console.log(`User subscription cleanup completed for ${formattedAddress}`)
-  }
-}
-
-/**
- * Subscribe to market updates via WebSocket
- */
-export const subscribeToMarkets = async <T>(callback: (data: T) => void): Promise<() => void> => {
-  return subscribeToChannel<T>('allMeta', {}, callback)
-}
-
-/**
- * Subscribe to real-time mid prices via WebSocket
- */
-export const subscribeToMidPrices = async (callback: (prices: Record<string, string>) => void): Promise<() => void> => {
-  console.log({
-    event: 'mid_price_subscription_setup',
-    timestamp: new Date().toISOString()
-  })
-  
-  // Initialize WebSocket if not already connected
-  if (websocket === null || websocket.readyState !== WebSocket.OPEN) {
-    await initializeWebSocket()
-  }
-  
-  // Check if we have cached mid prices already, use them immediately
-  if (Object.keys(midPricesCache).length > 0) {
-    console.log({
-      event: 'using_cached_mid_prices',
-      timestamp: new Date().toISOString(),
-      count: Object.keys(midPricesCache).length
-    })
-    // Call callback with cached values immediately so UI has data
-    callback({...midPricesCache})
-  }
-  
-  // For allMids we need to register directly with the channel name
-  const subscriptionMessage = {
+export const createMidPricesSubscription = (): string => {
+  return JSON.stringify({
     method: 'subscribe',
     subscription: {
       type: 'allMids'
     }
-  }
-  
-  // Send subscription request
-  if (websocket != null && websocket.readyState === WebSocket.OPEN) {
-    websocket.send(JSON.stringify(subscriptionMessage))
-  }
-  
-  // Set up a heartbeat interval to request fresh mid prices periodically
-  // This ensures we get regular updates even if the WebSocket doesn't send them
-  const midPricesHeartbeat = setInterval(() => {
-    if (websocket != null && websocket.readyState === WebSocket.OPEN) {
-      console.log({
-        event: 'mid_prices_heartbeat_ping',
-        timestamp: new Date().toISOString()
-      })
-      // Re-subscribe to ensure we get fresh data
-      websocket.send(JSON.stringify(subscriptionMessage))
-    }
-  }, 15000) // Ping every 15 seconds to ensure mid prices stay updated
-  
-  // Create the handler function for mid price updates
-  const handleMidPrices = (data: unknown) => {
-    try {
-      // Parse the data using our cleaner
-      const allMids = asAllMids(data)
-      
-      // Force a new object creation to ensure React state updates
-      const newMidPrices = Object.assign({}, allMids.mids)
-      
-      // Update the cache with a fresh object
-      midPricesCache = newMidPrices
-      
-      // Get BTC price from parsed data
-      const btcPrice = newMidPrices['BTC'] || 'unavailable'
-      
-      // Log just before callback
-      console.log({
-        event: 'mid_prices_pre_callback',
-        timestamp: new Date().toISOString(),
-        btc_price: btcPrice
-      })
-      
-      // Call the callback with the NEW prices object
-      callback(newMidPrices)
-    } catch (error) {
-      console.log({
-        event: 'mid_prices_processing_error',
-        timestamp: new Date().toISOString(),
-        error: error instanceof Error ? error.message : 'Unknown error'
-      })
-    }
-  }
-  
-  // Register only with the direct channel name to avoid subscription key issues
-  websocketSubscriptions.set('allMids', handleMidPrices)
-  
-  // Return unsubscribe function
-  return () => {
-    console.log({
-      event: 'mid_prices_unsubscribe',
-      timestamp: new Date().toISOString()
-    })
+  })
+}
+
+/**
+ * Process a WebSocket message and extract mid prices if applicable
+ */
+export const processMidPricesMessage = (message: unknown): Record<string, string> => {
+  try {
+    // Parse the message if it's a string
+    const data = typeof message === 'string' ? JSON.parse(message) : message
     
-    // Clear the heartbeat interval to prevent memory leaks
-    if (midPricesHeartbeat != null) {
-      clearInterval(midPricesHeartbeat)
-    }
-    
-    // Send unsubscribe message
-    if (websocket != null && websocket.readyState === WebSocket.OPEN) {
-      websocket.send(JSON.stringify({
-        method: 'unsubscribe',
-        subscription: {
-          type: 'allMids'
+    // Check if it's a mid prices response
+    if (data != null && typeof data === 'object') {
+      // Handle message where channel is specified (from WebSocket)
+      if ('channel' in data && data.channel === 'allMids' && 'data' in data) {
+        try {
+          // Try to parse using our cleaner for type safety
+          const allMidsData = asAllMids(data.data)
+          const midPrices: Record<string, string> = { ...allMidsData.mids }
+          
+          // Log success for debugging
+          console.log('Successfully processed mid prices:', Object.keys(midPrices).length)
+          
+          // Update the cached prices
+          cachedMidPrices = { ...midPrices }
+          return midPrices
+        } catch (error) {
+          console.error('Error parsing mid prices data with cleaner:', error)
+          
+          // Fallback: try to access the mids directly
+          if (data.data != null && typeof data.data === 'object' && 'mids' in data.data) {
+            try {
+              const midsObj = data.data.mids as Record<string, string>
+              cachedMidPrices = { ...midsObj }
+              console.log('Fallback: processed mid prices directly:', Object.keys(cachedMidPrices).length)
+              return cachedMidPrices
+            } catch (fallbackError) {
+              console.error('Fallback direct access also failed:', fallbackError)
+            }
+          }
         }
-      }))
+      } 
+      // Handle direct message format (when testing or replaying data)
+      else if ('mids' in data) {
+        try {
+          const midsObj = data.mids as Record<string, string>
+          cachedMidPrices = { ...midsObj }
+          return cachedMidPrices
+        } catch (directError) {
+          console.error('Error accessing mids directly:', directError)
+        }
+      }
     }
     
-    // Remove subscription handler
-    websocketSubscriptions.delete('allMids')
+    // Return cached prices as fallback
+    return cachedMidPrices
+  } catch (error) {
+    console.error('Error processing mid prices message:', error)
+    return cachedMidPrices
   }
 }
 
 /**
- * Get the current cached mark prices
+ * Get the current cached mid prices
  */
-export const getMidPrices = (): Record<string, string> => {
-  return midPricesCache
+export const getCachedMidPrices = (): Record<string, string> => {
+  return { ...cachedMidPrices }
 }
 
-// Keep the original fetch functions as fallbacks
+/**
+ * Create a ping message for keeping the connection alive
+ */
+export const createPingMessage = (): string => {
+  return JSON.stringify({ method: 'ping' })
+}
 
-export const fetchMarkets = async () => {
+/**
+ * Check if a message is a pong response
+ */
+export const isPongMessage = (message: unknown): boolean => {
   try {
-    const response = await fetch('https://api.hyperliquid.xyz/info', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        type: 'allMeta'
-      })
-    })
-
-    if (response.ok === false) {
-      throw new Error(`API request failed with status ${response.status}`)
+    const data = typeof message === 'string' ? JSON.parse(message) : message
+    
+    // Check for various forms of pong messages
+    // 1. Direct pong {type: 'pong'}
+    if (data != null && typeof data === 'object' && 'type' in data && data.type === 'pong') {
+      return true
     }
-
-    return await response.json()
-  } catch (error) {
-    console.error('Error fetching markets:', error)
-    throw error
+    
+    // 2. Channel format {channel: 'pong'}
+    if (data != null && typeof data === 'object' && 'channel' in data && data.channel === 'pong') {
+      return true
+    }
+    
+    // 3. Plain string 'pong'
+    if (data === 'pong') {
+      return true
+    }
+    
+    return false
+  } catch {
+    return false
   }
 }
